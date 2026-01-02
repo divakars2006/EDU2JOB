@@ -1,0 +1,71 @@
+{
+  "case_1": {
+    "confidence": "99.0%",
+    "explanation": "Our AI analyzed your B.Tech in Computer Science and academic profile (CGPA 9.0). Your profile matches patterns found in successful ML Engineers.",
+    "insights": [
+      "Skill Gap: Learning 'Machine Learning' is highly recommended for ML Engineer roles.",
+      "Skill Gap: Learning 'SQL' is highly recommended for ML Engineer roles.",
+      "Skill Gap: Learning 'Keras' is highly recommended for ML Engineer roles.",
+      "Certifications: Adding industry-recognized certifications can significantly boost your profile.",
+      "Experience: Look for internship opportunities to gain practical experience."
+    ],
+    "missing_skills": [
+      "Machine Learning",
+      "SQL",
+      "Keras"
+    ],
+    "probabilities": [
+      {
+        "role": "ML Engineer",
+        "score": 0.99
+      },
+      {
+        "role": "Data Scientist",
+        "score": 0.01
+      },
+      {
+        "role": "Business Analyst",
+        "score": 0.0
+      },
+      {
+        "role": "Software Developer",
+        "score": 0.0
+      }
+    ],
+    "role": "ML Engineer"
+  },
+  "case_2": {
+    "confidence": "60.0%",
+    "explanation": "Our AI analyzed your B.Tech in Data Science and academic profile (CGPA 9.0). Your profile matches patterns found in successful Data Scientists. (Adjusted based on specific Data Scientist skills/experience detected in your profile.)",
+    "insights": [
+      "Skill Gap: Learning 'SQL' is highly recommended for Data Scientist roles.",
+      "Skill Gap: Learning 'Data Visualization' is highly recommended for Data Scientist roles.",
+      "Skill Gap: Learning 'Machine Learning' is highly recommended for Data Scientist roles.",
+      "Certifications: Adding industry-recognized certifications can significantly boost your profile."
+    ],
+    "missing_skills": [
+      "SQL",
+      "Data Visualization",
+      "Machine Learning"
+    ],
+    "probabilities": [
+      {
+        "role": "Data Scientist",
+        "score": 0.6
+      },
+      {
+        "role": "ML Engineer",
+        "score": 0.4
+      },
+      {
+        "role": "Business Analyst",
+        "score": 0.0
+      },
+      {
+        "role": "Software Developer",
+        "score": 0.0
+      }
+    ],
+    "role": "Data Scientist"
+  }
+}

@@ -1,0 +1,12 @@
+--- ML Engineer candidate with missing skills ---
+Role: Software Developer
+Missing: ["Java", "JavaScript", "React", "Git", "Node.js"]
+
+--- Software Developer candidate missing Node.js ---
+Role: Software Developer
+Missing: ["Node.js"]
+
+--- Candidate with no skills ---
+Role: Software Developer
+Missing: ["Java", "Python", "JavaScript", "React", "SQL", "Git", "Node.js"]
+
