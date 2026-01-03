@@ -33,9 +33,15 @@ const LoginForm = ({ className }: LoginFormProps) => {
 
             if (result.success && result.data) {
                 login(result.data, result.token);
-                // Navigation is handled by the page or app router listening to auth state
-                window.history.pushState({}, '', '/dashboard');
-                window.dispatchEvent(new PopStateEvent('popstate'));
+
+                if (result.data.isAdmin) {
+                    localStorage.setItem('isAdminAuthenticated', 'true');
+                    // Force navigation to ensure clean state for admin
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    window.history.pushState({}, '', '/dashboard');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                }
             } else {
                 setError(result.message || 'Login failed. Please try again.');
             }

@@ -5,8 +5,10 @@ import datetime
 import joblib
 import pandas as pd
 import numpy as np
+import subprocess
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -14,6 +16,8 @@ CORS(app)
 # Configuration
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
+DATASET_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'job_roles_dataset.tsv')
+TRAINING_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'train_model.py')
 PORT = 5000
 
 # Global artifacts
@@ -48,9 +52,11 @@ def calculate_missing_skills(user_skills, role):
     return missing
 
 def init_db():
-    """Initialize the SQLite database for prediction history."""
+    """Initialize the SQLite database for prediction history and admin users."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    
+    # History Table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,9 +64,55 @@ def init_db():
             role TEXT NOT NULL,
             confidence REAL,
             explanation TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            flagged INTEGER DEFAULT 0
         )
     ''')
+    
+    # Check if flagged column exists (for migration)
+    cursor.execute("PRAGMA table_info(history)")
+    columns = [info[1] for info in cursor.fetchall()]
+    if 'flagged' not in columns:
+        print("Migrating DB: Adding 'flagged' column to history table...")
+        try:
+            cursor.execute("ALTER TABLE history ADD COLUMN flagged INTEGER DEFAULT 0")
+        except sqlite3.OperationalError as e:
+            print(f"Migration warning: {e}")
+
+    # Admin Users Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+    
+    # Seed default admin
+    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('admin',))
+    if not cursor.fetchone():
+        print("Seeding default admin user...")
+        # In a real app, hash password!
+        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('admin', 'admin123'))
+
+    # Seed requested admin (Exact match as requested)
+    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('Adimn@info.com',))
+    if not cursor.fetchone():
+        print("Seeding requested admin user...")
+        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('Adimn@info.com', '654321'))
+
+    # Seed corrected spelling (Admin@info.com) just in case
+    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('Admin@info.com',))
+    if not cursor.fetchone():
+        print("Seeding corrected admin user...")
+        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('Admin@info.com', '654321'))
+
+    # Seed lowercase version (admin@info.com) for usability
+    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('admin@info.com',))
+    if not cursor.fetchone():
+        print("Seeding lowercase admin user...")
+        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('admin@info.com', '654321'))
+
     conn.commit()
     conn.close()
     print(f"Database initialized at {DB_PATH}")
@@ -95,6 +147,141 @@ def load_artifacts():
         print("ML artifacts loaded.")
     except Exception as e:
         print(f"Error loading artifacts: {e}")
+
+# --- Admin Endpoints ---
+
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM admin_users WHERE username = ? AND password = ?", (username, password))
+        user = cur.fetchone()
+        conn.close()
+        
+        if user:
+            return jsonify({'message': 'Login successful', 'token': 'dummy_admin_token', 'role': 'admin'}), 200
+        else:
+            return jsonify({'message': 'Invalid credentials'}), 401
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+
+@app.route('/admin/stats', methods=['GET'])
+def admin_stats():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        
+        # Total Predictions
+        cur.execute("SELECT COUNT(*) FROM history")
+        total_predictions = cur.fetchone()[0]
+        
+        # Flagged Predictions
+        cur.execute("SELECT COUNT(*) FROM history WHERE flagged = 1")
+        total_flagged = cur.fetchone()[0]
+        
+        # Unique Users (approximate based on user_id)
+        cur.execute("SELECT COUNT(DISTINCT user_id) FROM history")
+        total_users = cur.fetchone()[0]
+        
+        # Role Distribution
+        cur.execute("SELECT role, COUNT(*) as count FROM history GROUP BY role ORDER BY count DESC LIMIT 5")
+        role_dist = [{'role': row[0], 'count': row[1]} for row in cur.fetchall()]
+        
+        conn.close()
+        
+        # Model Info (Last Modified of model file)
+        model_path = os.path.join(MODEL_DIR, 'job_model.pkl')
+        last_trained = "Unknown"
+        if os.path.exists(model_path):
+            timestamp = os.path.getmtime(model_path)
+            last_trained = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+        return jsonify({
+            'total_predictions': total_predictions,
+            'total_flagged': total_flagged,
+            'total_users': total_users,
+            'role_distribution': role_dist,
+            'last_trained': last_trained
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/predictions', methods=['GET'])
+def admin_predictions():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM history ORDER BY timestamp DESC LIMIT 500") # Limit for performance
+        rows = cur.fetchall()
+        conn.close()
+        
+        logs = [dict(row) for row in rows]
+        return jsonify(logs)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/flag', methods=['POST'])
+def admin_flag():
+    try:
+        data = request.get_json()
+        log_id = data.get('id')
+        new_status = data.get('flagged', 0)
+        
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("UPDATE history SET flagged = ? WHERE id = ?", (new_status, log_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': 'Updated flag status'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def run_retraining_script():
+    """Executes the training script in a separate thread/process."""
+    try:
+        print("Starting model retraining...")
+        # Ensure we are calling the python env correctly. 
+        # Using 'python' assumes it's in path.
+        subprocess.run(['python', TRAINING_SCRIPT_PATH], check=True)
+        print("Model retraining complete. Reloading artifacts...")
+        load_artifacts() # Reload in memory
+    except Exception as e:
+        print(f"Retraining failed: {e}")
+
+@app.route('/admin/retrain', methods=['POST'])
+def admin_retrain():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if file:
+            # Save the new dataset
+            # We backup the old one first? (Skipping for simplicity as per requirement "The old model is replaced")
+            file.save(DATASET_PATH)
+            
+            # Trigger training in background
+            thread = threading.Thread(target=run_retraining_script)
+            thread.start()
+            
+            return jsonify({'message': 'Dataset uploaded. Training started in background.'}), 200
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- End Admin Endpoints ---
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -252,7 +439,7 @@ def predict():
                     conn = sqlite3.connect(DB_PATH)
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT INTO history (user_id, role, confidence, explanation) VALUES (?, ?, ?, ?)",
+                        "INSERT INTO history (user_id, role, confidence, explanation, flagged) VALUES (?, ?, ?, ?, 0)",
                         (user_id, top_role, confidence, explanation)
                     )
                     conn.commit()

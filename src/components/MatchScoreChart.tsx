@@ -5,9 +5,10 @@ interface MatchScoreChartProps {
     data?: any[];
     title?: string;
     className?: string;
+    disableCardStyle?: boolean;
 }
 
-const MatchScoreChart = ({ user, data: customData, title, className }: MatchScoreChartProps) => {
+const MatchScoreChart = ({ user, data: customData, title, className, disableCardStyle = false }: MatchScoreChartProps) => {
 
     const [animate, setAnimate] = useState(false);
 
@@ -124,12 +125,9 @@ const MatchScoreChart = ({ user, data: customData, title, className }: MatchScor
     const areaPath = `${linePath} L ${getX(100)},${height} L ${getX(0)},${height} Z`;
 
     return (
-        <div className={`info-card match-score-chart-card ${className || ''}`}>
-            <div className="card-header">
-                <span className="card-icon">📊</span>
-                <h3 className="card-title">{title || "Job Role Match Score"}</h3>
-            </div>
-            <div className="card-content">
+        <div className={`${disableCardStyle ? '' : 'info-card match-score-chart-card'} ${className || ''}`}>
+            {/* removed card-header */}
+            <div className={disableCardStyle ? '' : 'card-content'}>
                 <div className="svg-chart-container">
                     <svg viewBox={`0 0 ${width} ${height}`} className="match-chart-svg">
                         <defs>

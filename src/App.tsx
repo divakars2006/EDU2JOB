@@ -1,3 +1,4 @@
+/* Existing imports */
 import { useState, useEffect } from 'react'
 import LandingPage from './pages/landingpage'
 import LoginPage from './pages/LoginPage'
@@ -6,6 +7,8 @@ import Dashboard from './pages/dashboard'
 import ProfilePage from './pages/profilepage'
 import JobPredictor from './pages/JobPredictor'
 import HistoryPage from './pages/HistoryPage'
+import AdminLogin from './pages/AdminLogin'
+import AdminDashboard from './pages/AdminDashboard'
 import './App.css'
 import { useAuth } from './authentication/AuthContext'
 
@@ -20,6 +23,8 @@ export function App() {
     if (path === '/profile') return 'profile'
     if (path === '/job-predictor') return 'job-predictor'
     if (path === '/history') return 'history'
+    if (path === '/admin/login') return 'admin-login'
+    if (path === '/admin/dashboard') return 'admin-dashboard'
     return 'landing'
   }
 
@@ -48,14 +53,21 @@ export function App() {
 
   // Protected Route Logic
   if ((currentPage === 'dashboard' || currentPage === 'profile' || currentPage === 'job-predictor' || currentPage === 'history') && !isAuthenticated) {
-    // Check local storage directly to avoid flicker if context is initializing
     if (localStorage.getItem('isAuthenticated') !== 'true') {
-      // Redirect to login
       if (typeof window !== 'undefined') {
         window.history.pushState({}, '', '/login');
-        // We need to force update state or let the interval catch it, 
-        // but setting state directly is better for immediate feedback.
         return <LoginPage />;
+      }
+    }
+  }
+
+  // Admin Protected Route
+  if (currentPage === 'admin-dashboard') {
+    const isAdmin = localStorage.getItem('isAdminAuthenticated') === 'true';
+    if (!isAdmin) {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/admin/login');
+        return <AdminLogin />;
       }
     }
   }
@@ -66,7 +78,6 @@ export function App() {
     case 'register':
       return <RegisterPage />
     case 'dashboard':
-      // Double check in render
       if (localStorage.getItem('isAuthenticated') !== 'true' && !isAuthenticated) return <LoginPage />
       return <Dashboard />
     case 'profile':
@@ -78,6 +89,10 @@ export function App() {
     case 'history':
       if (localStorage.getItem('isAuthenticated') !== 'true' && !isAuthenticated) return <LoginPage />
       return <HistoryPage />
+    case 'admin-login':
+      return <AdminLogin />
+    case 'admin-dashboard':
+      return <AdminDashboard />
     case 'landing':
     default:
       return <LandingPage />

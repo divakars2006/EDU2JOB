@@ -60,18 +60,65 @@ export const registerUser = async (data: RegisterData): Promise<ApiResponse> => 
 /**
  * Login user
  */
+const ADMIN_API_URL = 'http://localhost:5000/admin';
+
+/**
+ * Login user (Unified: Tries User DB first, then Admin DB)
+ */
 export const loginUser = async (data: LoginData): Promise<ApiResponse> => {
     try {
+        // 1. Try Regular User Login
         const response = await fetch(`${API_URL}/login`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
 
-        const result = await response.json();
-        return result;
+        if (response.ok) {
+            return await response.json();
+        }
+
+        // 2. If User Login fails, Try Admin Login
+        // We assume failure might be due to it being an admin account on the other backend
+        console.log("User login failed, trying admin login...");
+
+        const adminResponse = await fetch(`${ADMIN_API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: data.email,
+                password: data.password
+            }),
+        });
+
+        if (adminResponse.ok) {
+            const adminResult = await adminResponse.json();
+            // Normalize admin response to match expected User structure for Context
+            return {
+                success: true,
+                message: 'Admin Login Successful',
+                token: adminResult.token,
+                data: {
+                    id: 'admin-' + Date.now(),
+                    name: 'Administrator',
+                    email: data.email,
+                    isAdmin: true, // Flag for frontend redirection
+                    // Dummy data to prevent crashes in Dashboard UI
+                    createdAt: new Date().toISOString(),
+                    educations: [],
+                    skills: [],
+                    certifications: [],
+                    placementStatus: []
+                }
+            };
+        }
+
+        // If both fail, return original error or generic
+        return {
+            success: false,
+            message: 'Invalid email or password'
+        };
+
     } catch (error) {
         console.error('Login error:', error);
         return {
