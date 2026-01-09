@@ -42,7 +42,10 @@ def train_model():
     feature_cols = [
         'degree', 
         'specialization', 
-        'cgpa'
+        'cgpa',
+        'internship_experience',
+        'certifications',
+        'project_count'
     ]
     
     target_col = 'job_role'

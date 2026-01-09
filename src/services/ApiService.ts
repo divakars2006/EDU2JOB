@@ -31,7 +31,7 @@ interface ApiResponse {
     token?: string;
 }
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'http://localhost:5000/api';
 
 /**
  * Register a new user

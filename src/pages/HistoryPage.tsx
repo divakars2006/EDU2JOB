@@ -75,6 +75,7 @@ const HistoryPage = () => {
                     <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/profile'); }}>My Profile</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/job-predictor'); }}>Job Predictor</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/history'); }} className="active">History</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/feedback'); }}>Feedback</a>
                 </nav>
                 <div className="header-right">
                     <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">

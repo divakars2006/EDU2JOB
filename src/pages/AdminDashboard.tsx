@@ -15,6 +15,10 @@ export default function AdminDashboard() {
     const [file, setFile] = useState<File | null>(null);
     const [uploadStatus, setUploadStatus] = useState('');
 
+    // Feedback
+    const [feedbackLogs, setFeedbackLogs] = useState<any[]>([]);
+    const [feedbackFilter, setFeedbackFilter] = useState({ rating: '', role: '', agreement: '', search: '' });
+
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
@@ -26,6 +30,8 @@ export default function AdminDashboard() {
         fetchStats();
         if (activeTab === 'logs' || activeTab === 'flagged') {
             fetchLogs();
+        } else if (activeTab === 'feedback') {
+            fetchFeedback();
         }
     }, [activeTab, theme]);
 
@@ -90,6 +96,32 @@ export default function AdminDashboard() {
         } catch (error) {
             setUploadStatus('Error');
             console.error(error);
+        }
+    };
+
+    const fetchFeedback = async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch('http://localhost:5000/admin/all_feedback');
+            const data = await res.json();
+            setFeedbackLogs(data);
+        } catch (error) {
+            console.error("Error fetching feedback:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleFeedbackStatus = async (id: number, status: string) => {
+        try {
+            await fetch('http://localhost:5000/admin/feedback/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, status })
+            });
+            setFeedbackLogs(prev => prev.map(f => f.id === id ? { ...f, status } : f));
+        } catch (error) {
+            console.error("Error updating status:", error);
         }
     };
 
@@ -168,6 +200,120 @@ export default function AdminDashboard() {
             </div>
         );
 
+
+
+        if (activeTab === 'feedback') {
+            const filteredFeedback = feedbackLogs.filter(f => {
+                const matchRating = feedbackFilter.rating ? f.relevance_rating.toString() === feedbackFilter.rating : true;
+                const matchRole = feedbackFilter.role ? f.predicted_role === feedbackFilter.role : true;
+                const matchAgreement = feedbackFilter.agreement ? f.confidence_agreement === feedbackFilter.agreement : true;
+                const matchSearch = feedbackFilter.search ?
+                    (f.user_id?.toLowerCase().includes(feedbackFilter.search.toLowerCase()) || f.predicted_role?.toLowerCase().includes(feedbackFilter.search.toLowerCase())) : true;
+                return matchRating && matchRole && matchAgreement && matchSearch;
+            });
+
+            return (
+                <div className="info-card">
+                    <div className="card-header">
+                        <span className="card-icon">💬</span>
+                        <h3 className="card-title">User Feedback Management</h3>
+                    </div>
+
+                    {/* Filters */}
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                        <select
+                            value={feedbackFilter.rating}
+                            onChange={(e) => setFeedbackFilter({ ...feedbackFilter, rating: e.target.value })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', color: 'inherit', border: 'none' }}
+                        >
+                            <option value="">All Ratings</option>
+                            {[1, 2, 3, 4, 5].map(r => <option key={r} value={r}>{r} Stars</option>)}
+                        </select>
+                        <select
+                            value={feedbackFilter.agreement}
+                            onChange={(e) => setFeedbackFilter({ ...feedbackFilter, agreement: e.target.value })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', color: 'inherit', border: 'none' }}
+                        >
+                            <option value="">All Agreements</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            <option value="Somewhat">Somewhat</option>
+                        </select>
+                        <input
+                            type="text"
+                            placeholder="Search User ID or Role..."
+                            value={feedbackFilter.search}
+                            onChange={(e) => setFeedbackFilter({ ...feedbackFilter, search: e.target.value })}
+                            style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', color: 'inherit', border: 'none', flex: 1 }}
+                        />
+                    </div>
+
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem', color: 'inherit' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left', opacity: 0.7 }}>
+                                    <th style={{ padding: '1rem' }}>Date</th>
+                                    <th style={{ padding: '1rem' }}>User ID</th>
+                                    <th style={{ padding: '1rem' }}>Role</th>
+                                    <th style={{ padding: '1rem' }}>Rating</th>
+                                    <th style={{ padding: '1rem' }}>Agreement</th>
+                                    <th style={{ padding: '1rem' }}>Comments</th>
+                                    <th style={{ padding: '1rem' }}>Status</th>
+                                    <th style={{ padding: '1rem' }}>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredFeedback.map(item => (
+                                    <tr key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <td style={{ padding: '1rem', whiteSpace: 'nowrap', fontSize: '0.85rem', opacity: 0.7 }}>
+                                            {new Date(item.timestamp).toLocaleDateString()}
+                                        </td>
+                                        <td style={{ padding: '1rem', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.user_id}>
+                                            {item.user_id}
+                                        </td>
+                                        <td style={{ padding: '1rem' }}>{item.predicted_role}</td>
+                                        <td style={{ padding: '1rem' }}>{'⭐'.repeat(item.relevance_rating)}</td>
+                                        <td style={{ padding: '1rem' }}>{item.confidence_agreement || '-'}</td>
+                                        <td style={{ padding: '1rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.comments}>
+                                            {item.comments || '-'}
+                                        </td>
+                                        <td style={{ padding: '1rem' }}>
+                                            <span style={{
+                                                padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem',
+                                                background: item.status === 'Reviewed' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)',
+                                                color: item.status === 'Reviewed' ? '#22c55e' : '#eab308'
+                                            }}>
+                                                {item.status || 'Pending'}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '1rem', display: 'flex', gap: '0.5rem' }}>
+                                            {item.status !== 'Reviewed' && (
+                                                <button
+                                                    onClick={() => handleFeedbackStatus(item.id, 'Reviewed')}
+                                                    style={{ cursor: 'pointer', background: 'rgba(34, 197, 94, 0.2)', border: 'none', color: '#22c55e', padding: '4px 8px', borderRadius: '4px' }}
+                                                    title="Mark as Reviewed"
+                                                >
+                                                    ✅
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleFlag(item.prediction_id, 1)}
+                                                style={{ cursor: 'pointer', background: 'rgba(239, 68, 68, 0.2)', border: 'none', color: '#ef4444', padding: '4px 8px', borderRadius: '4px' }}
+                                                title="Flag Prediction"
+                                            >
+                                                🚩
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredFeedback.length === 0 && <p style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>No feedback found.</p>}
+                    </div>
+                </div>
+            );
+        }
+
         // Logs Table
         const isFlaggedView = activeTab === 'flagged';
         const displayLogs = isFlaggedView ? logs.filter(l => l.flagged) : logs;
@@ -183,8 +329,11 @@ export default function AdminDashboard() {
                         <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', textAlign: 'left' }}>
                                 <th style={{ padding: '1rem' }}>Time</th>
-                                <th style={{ padding: '1rem' }}>Role</th>
+                                <th style={{ padding: '1rem' }}>User ID</th>
+                                <th style={{ padding: '1rem' }}>Background</th>
+                                <th style={{ padding: '1rem' }}>Pred. Role</th>
                                 <th style={{ padding: '1rem' }}>Conf.</th>
+                                <th style={{ padding: '1rem' }}>Feedback</th>
                                 <th style={{ padding: '1rem' }}>Status</th>
                                 <th style={{ padding: '1rem' }}>Action</th>
                             </tr>
@@ -192,14 +341,35 @@ export default function AdminDashboard() {
                         <tbody>
                             {displayLogs.map(log => (
                                 <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <td style={{ padding: '1rem' }}>{new Date(log.timestamp).toLocaleDateString()}</td>
-                                    <td style={{ padding: '1rem' }}>{log.role}</td>
+                                    <td style={{ padding: '1rem', whiteSpace: 'nowrap', fontSize: '0.9rem', opacity: 0.7 }}>
+                                        {new Date(log.timestamp).toLocaleString(undefined, {
+                                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                        })}
+                                    </td>
+                                    <td style={{ padding: '1rem', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.user_id}>
+                                        {log.user_id}
+                                    </td>
+                                    <td style={{ padding: '1rem' }}>
+                                        <div style={{ fontSize: '0.95rem' }}>{log.degree || '-'}</div>
+                                        <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{log.specialization || '-'}</div>
+                                    </td>
+                                    <td style={{ padding: '1rem', fontWeight: 500 }}>{log.role}</td>
                                     <td style={{ padding: '1rem' }}>{(log.confidence * 100).toFixed(0)}%</td>
+                                    <td style={{ padding: '1rem' }}>
+                                        {log.rating ? (
+                                            <span title={`${log.rating}/5 Stars`}>
+                                                {'⭐'.repeat(log.rating)}
+                                            </span>
+                                        ) : (
+                                            <span style={{ opacity: 0.3 }}>-</span>
+                                        )}
+                                    </td>
                                     <td style={{ padding: '1rem' }}>
                                         <span style={{
                                             padding: '4px 8px', borderRadius: '4px',
                                             background: log.flagged ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            color: log.flagged ? '#ef4444' : '#22c55e'
+                                            color: log.flagged ? '#ef4444' : '#22c55e',
+                                            fontSize: '0.85rem'
                                         }}>
                                             {log.flagged ? 'Flagged' : 'OK'}
                                         </span>
@@ -209,7 +379,7 @@ export default function AdminDashboard() {
                                             onClick={() => handleFlag(log.id, log.flagged)}
                                             style={{
                                                 background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
-                                                color: 'inherit', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer'
+                                                color: 'inherit', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem'
                                             }}
                                         >
                                             {log.flagged ? 'Unflag' : 'Flag'}
@@ -239,6 +409,7 @@ export default function AdminDashboard() {
                     <a className={activeTab === 'dashboard' ? 'active' : ''} onClick={() => setActiveTab('dashboard')}>Dashboard</a>
                     <a className={activeTab === 'model' ? 'active' : ''} onClick={() => setActiveTab('model')}>Model Management</a>
                     <a className={activeTab === 'logs' ? 'active' : ''} onClick={() => setActiveTab('logs')}>Prediction Logs</a>
+                    <a className={activeTab === 'feedback' ? 'active' : ''} onClick={() => setActiveTab('feedback')}>Feedback</a>
                     <a className={activeTab === 'flagged' ? 'active' : ''} onClick={() => setActiveTab('flagged')}>Flagged Records</a>
                 </nav>
                 <div className="header-right">

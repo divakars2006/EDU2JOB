@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import './JobPredictor.css';
 import './dashboard.css'; // Import dashboard styles for header/theme
 import MatchScoreChart from '../components/MatchScoreChart';
+import FeedbackForm from '../components/FeedbackForm';
 
 const JobPredictor = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -41,6 +42,7 @@ const JobPredictor = () => {
     /* State Updates */
     const [loading, setLoading] = useState<boolean>(false);
     const [resultData, setResultData] = useState<any>(null);
+    const [showFeedback, setShowFeedback] = useState<boolean>(false);
 
     const handlePredict = async () => {
         if (!user) {
@@ -57,8 +59,10 @@ const JobPredictor = () => {
                 specialization: user.educations?.[0]?.specialization || 'Computer Science',
                 skills: user.skills || [],
                 placementStatus: user.placementStatus || [],
+                internships: user.internships || [],
                 certifications: user.certifications || [],
-                project_count: 3, // Mock project count or derive
+
+                project_count: user.projects ? user.projects.length : (user.placementStatus ? user.placementStatus.length : 0), // Use real count
                 cgpa: user.educations && user.educations.length > 0 && user.educations[0].cgpa
                     ? parseFloat(user.educations[0].cgpa)
                     : 7.5 // Fallback if no education or CGPA found
@@ -82,6 +86,12 @@ const JobPredictor = () => {
             const result = await response.json();
             if (!result.error) {
                 setResultData(result); // Save full rich result
+                // Save specific prediction ID and Role for feedback
+                localStorage.setItem('lastPrediction', JSON.stringify({
+                    role: result.role,
+                    predictionId: result.prediction_id
+                }));
+                setShowFeedback(true);
             } else {
                 alert("Prediction failed: " + (result.error || result.message));
             }
@@ -108,6 +118,7 @@ const JobPredictor = () => {
                     <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/profile'); }}>My Profile</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/job-predictor'); }} className="active">Job Predictor</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/history'); }}>History</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/feedback'); }}>Feedback</a>
                 </nav>
                 <div className="header-right">
                     <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
@@ -206,7 +217,7 @@ const JobPredictor = () => {
                                     {resultData.missing_skills && resultData.missing_skills.length > 0 ? (
                                         <div className="skills-list" style={{ justifyContent: 'center' }}>
                                             {resultData.missing_skills.map((skill: string, index: number) => (
-                                                <span key={index} className="skill-tag" style={{ border: '1px solid #a15151ff', color: '#852222ff', backgroundColor: 'rgba(109, 43, 43, 0.4)' }}>{skill}</span>
+                                                <span key={index} className="skill-tag" style={{ border: '1px solid #975d5dff', color: '#a54343ff', backgroundColor: 'rgba(201, 153, 153, 0.36)' }}>{skill}</span>
                                             ))}
                                         </div>
                                     ) : (
@@ -214,6 +225,18 @@ const JobPredictor = () => {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Feedback Form */}
+                            {showFeedback && (
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                    <FeedbackForm
+                                        predictedRole={resultData.role}
+                                        userId={user?.id || 'anonymous'}
+                                        predictionId={resultData.prediction_id}
+                                        onClose={() => setShowFeedback(false)}
+                                    />
+                                </div>
+                            )}
 
                             {/* 3. Explanation & Insights */}
                             <div className="info-card" style={{ gridColumn: '1 / -1' }}>

@@ -26,7 +26,7 @@ CORS(app)
 PORT = 3001
 # Use same JWT secret as Node for compatibility, though usually secrets are env vars
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "1039201455328-lpcts2vvvdru343nipkt60cpv8n5td8f.apps.googleusercontent.com")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "232841381092-8c1brgamv08b833qbn7t8fg7cgoi3vsa.apps.googleusercontent.com")
 
 def generate_token(user_id, email):
     payload = {

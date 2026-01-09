@@ -7,6 +7,7 @@ import Dashboard from './pages/dashboard'
 import ProfilePage from './pages/profilepage'
 import JobPredictor from './pages/JobPredictor'
 import HistoryPage from './pages/HistoryPage'
+import FeedbackPage from './pages/FeedbackPage'
 import AdminLogin from './pages/AdminLogin'
 import AdminDashboard from './pages/AdminDashboard'
 import './App.css'
@@ -23,6 +24,7 @@ export function App() {
     if (path === '/profile') return 'profile'
     if (path === '/job-predictor') return 'job-predictor'
     if (path === '/history') return 'history'
+    if (path === '/feedback') return 'feedback'
     if (path === '/admin/login') return 'admin-login'
     if (path === '/admin/dashboard') return 'admin-dashboard'
     return 'landing'
@@ -52,7 +54,7 @@ export function App() {
   }, [currentPage])
 
   // Protected Route Logic
-  if ((currentPage === 'dashboard' || currentPage === 'profile' || currentPage === 'job-predictor' || currentPage === 'history') && !isAuthenticated) {
+  if ((currentPage === 'dashboard' || currentPage === 'profile' || currentPage === 'job-predictor' || currentPage === 'history' || currentPage === 'feedback') && !isAuthenticated) {
     if (localStorage.getItem('isAuthenticated') !== 'true') {
       if (typeof window !== 'undefined') {
         window.history.pushState({}, '', '/login');
@@ -89,6 +91,9 @@ export function App() {
     case 'history':
       if (localStorage.getItem('isAuthenticated') !== 'true' && !isAuthenticated) return <LoginPage />
       return <HistoryPage />
+    case 'feedback':
+      if (localStorage.getItem('isAuthenticated') !== 'true' && !isAuthenticated) return <LoginPage />
+      return <FeedbackPage />
     case 'admin-login':
       return <AdminLogin />
     case 'admin-dashboard':
