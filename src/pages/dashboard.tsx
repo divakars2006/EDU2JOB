@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './dashboard.css';
-import MatchScoreChart from '../components/MatchScoreChart';
+import TrendingJobRoles from '../components/TrendingJobRoles';
 import { getUserById } from '../services/ApiService';
 
 const Dashboard = () => {
@@ -225,10 +225,8 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Match Score Chart Section */}
-          <div className="chart-section" style={{ marginTop: '2rem' }}>
-            <MatchScoreChart user={user} />
-          </div>
+          {/* Recently Trending Job Roles Section */}
+          <TrendingJobRoles />
         </main>
       </div>
     </div>

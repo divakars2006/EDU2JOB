@@ -36,7 +36,8 @@ ROLE_SKILLS_MAP = {
     'ML Engineer': ['Python', 'Machine Learning', 'Deep Learning', 'SQL', 'TensorFlow', 'Keras'],
     'Software Developer': ['Java', 'Python', 'JavaScript', 'React', 'SQL', 'Git', 'Node.js'],
     'Data Scientist': ['Python', 'R', 'SQL', 'Data Visualization', 'Statistics', 'Machine Learning', 'Pandas'],
-    'Business Analyst': ['SQL', 'Excel', 'Tableau', 'Power BI', 'Python', 'Data Analysis']
+    'Business Analyst': ['SQL', 'Excel', 'Tableau', 'Power BI', 'Python', 'Data Analysis'],
+    'Data Analyst': ['SQL', 'Python', 'Excel', 'Data Visualization', 'Tableau', 'Power BI', 'Statistics']
 }
 
 def calculate_missing_skills(user_skills, role):
@@ -44,7 +45,15 @@ def calculate_missing_skills(user_skills, role):
     Calculate missing skills for a given role based on user's current skills.
     Returns a set of missing skills.
     """
-    required_skills = ROLE_SKILLS_MAP.get(role, [])
+    required_skills = ROLE_SKILLS_MAP.get(role)
+    
+    # Robust lookup if direct key fails
+    if not required_skills:
+        for k, v in ROLE_SKILLS_MAP.items():
+            if k.lower() == role.lower().strip():
+                required_skills = v
+                break
+
     if not required_skills:
         return []
     
@@ -451,15 +460,82 @@ def predict():
         data = request.get_json()
         user_id = data.get('user_id')
         
+        print(f"--- Prediction Request ({user_id}) ---")
+        print(f"Raw Input: {json.dumps(data, indent=2)}")
+
         # Features expected by model
-        degree = data.get('degree', 'B.Tech')
-        specialization = data.get('specialization', 'Computer Science')
+        raw_degree = data.get('degree', 'B.Tech').strip()
+        raw_spec = data.get('specialization', 'Computer Science').strip()
         
-        # Normalize "Artificial Intelligence & Data Science" to "Artificial Intelligence"
-        if specialization and "Artificial Intelligence" in specialization and "Data Science" in specialization:
-             specialization = "Artificial Intelligence"
+        # --- Normalization Logic ---
+        # Map user input to dataset labels: 
+        # Degrees: B.Tech, M.Sc, MCA, MBA
+        # Specs: Computer Science, Information Technology, Data Science, Artificial Intelligence, Business Analytics, Artificial Intelligence & Data Science
         
+        degree_map = {
+            'btech': 'B.Tech', 'b.tech': 'B.Tech', 'b.e': 'B.Tech', 'bachelor of technology': 'B.Tech',
+            'msc': 'M.Sc', 'm.sc': 'M.Sc', 'master of science': 'M.Sc',
+            'mca': 'MCA', 'master of computer applications': 'MCA',
+            'mba': 'MBA', 'master of business administration': 'MBA'
+        }
+        
+        spec_map = {
+            'cse': 'Computer Science', 'cs': 'Computer Science', 'computer science': 'Computer Science', 'computer science engineering': 'Computer Science',
+            'it': 'Information Technology', 'information technology': 'Information Technology',
+            'ds': 'Data Science', 'data science': 'Data Science',
+            'ai': 'Artificial Intelligence', 'aiml': 'Artificial Intelligence', 'artificial intelligence': 'Artificial Intelligence',
+            'ba': 'Business Analytics', 'business analytics': 'Business Analytics',
+            'ai & ds': 'Artificial Intelligence & Data Science', 'artificial intelligence & data science': 'Artificial Intelligence & Data Science',
+            'aids': 'Artificial Intelligence & Data Science'
+        }
+        
+        # Normalize Degree
+        degree = 'B.Tech' # Default
+        clean_degree = raw_degree.lower().replace('.', '').replace(' ', '')
+        if clean_degree in degree_map:
+             degree = degree_map[clean_degree]
+        elif raw_degree in degree_map.values(): # Already valid
+             degree = raw_degree
+
+        # Normalize Specialization
+        specialization = 'Computer Science' # Default
+        clean_spec = raw_spec.lower()
+        
+        # Iterative match for specialization because it has spaces
+        found_spec = False
+        
+        # Check direct map first
+        if clean_spec in spec_map:
+            specialization = spec_map[clean_spec]
+            found_spec = True
+        
+        if not found_spec:
+            for key, val in spec_map.items():
+                if len(key) > 3 and key in clean_spec: # Avoid matching 'it' in 'algorithms'
+                    specialization = val
+                    found_spec = True
+                    break
+        
+        if not found_spec:
+             # Handle "Artificial Intelligence & Data Science" normalization from earlier code
+             if "artificial intelligence" in clean_spec and "data science" in clean_spec:
+                 specialization = "Artificial Intelligence & Data Science"
+             elif "artificial intelligence" in clean_spec:
+                 specialization = "Artificial Intelligence"
+             elif "data science" in clean_spec:
+                 specialization = "Data Science"
+             elif raw_spec in spec_map.values():
+                 specialization = raw_spec
+        
+        print(f"Normalized Inputs -> Degree: {degree}, Spec: {specialization}")
+
         skills_list = data.get('skills', [])
+        # Ensure skills_list is list of strings
+        if isinstance(skills_list, str):
+            try:
+                skills_list = json.loads(skills_list)
+            except:
+                skills_list = [skills_list]
         
         # New Feature: CGPA (default to average 7.5 if missing)
         try:
@@ -494,6 +570,8 @@ def predict():
             'project_count': project_count
         }])
         
+        print(f"Features for Model:\n{features}")
+
         # Encode
         # Numerical columns that don't need encoding
         numerical_cols = ['cgpa', 'project_count']
@@ -503,12 +581,10 @@ def predict():
                 try:
                     features[col] = encoders[col].transform(features[col])
                 except ValueError:
+                    print(f"Warning: Unseen label for {col}: {features[col].iloc[0]}. Defaulting to 0.")
                     # Handle unseen labels by assigning a default (e.g., 0)
-                    # Ideally we'd use a special 'unknown' token if trained with one
                     features[col] = 0
             elif col not in numerical_cols:
-                 # If it's categorical but no encoder found (shouldn't happen if loaded), 
-                 # maybe warn or skip?
                  pass
         
         # Predict
@@ -531,63 +607,31 @@ def predict():
             top_role = role_probs[0]['role']
             confidence = role_probs[0]['score']
 
+            print(f"Raw Prediction: {top_role} ({confidence})")
+
             # --- Post-Prediction Adjustment Logic ---
             adjustment_msg = ""
-            
-            # Rule: If predicted role = ML Engineer BUT user's job title/skills indicate Data Scientist
-            # -> downgrade confidence and reorder
-            
-            # Check for Data Scientist signals
-            ds_signals = False
-            
-            # 1. Check Skills
-            ds_keywords = {'data scientist', 'data science', 'statistics', 'r', 'pandas', 'matplotlib'}
-            user_skills_norm = {s.lower().strip() for s in skills_list}
-            if not user_skills_norm.isdisjoint(ds_keywords):
-                ds_signals = True
-                
-            # 2. Check Specialization
-            if 'data science' in specialization.lower():
-                ds_signals = True
-                
-            # 3. Check Placement Status (Job Titles)
-            for p in placements:
-                title = p.get('role', '').lower()
-                if 'data scientist' in title or 'data analyst' in title:
-                    ds_signals = True
-                    break
-
-            # Apply Adjustment
-            if False: # Heuristics disabled: top_role == 'ML Engineer' and ds_signals:
-                print(f"Adjusting predictions: Downgrading ML Engineer due to DS signals.")
-                role_dict = {item['role']: item for item in role_probs}
-                
-                # Penalize ML Engineer
-                if 'ML Engineer' in role_dict:
-                    role_dict['ML Engineer']['score'] *= 0.4
-                    
-                # Boost Data Scientist
-                if 'Data Scientist' in role_dict:
-                     # Ensure it has some base score if it was 0, or boost it
-                     current_score = role_dict['Data Scientist']['score']
-                     new_score = max(current_score * 3.0, 0.6) 
-                     role_dict['Data Scientist']['score'] = new_score
-                
-                # Re-sort
-                role_probs.sort(key=lambda x: x['score'], reverse=True)
-                
-                # Update top result
-                top_role = role_probs[0]['role']
-                confidence = role_probs[0]['score']
-                
-                adjustment_msg = " (Adjusted based on specific Data Scientist skills/experience detected in your profile.)"
-            # ----------------------------------------
             
             # Generate Insights (Simple Rule-based)
             insights = []
             
             # 1. Missing Skills Analysis
-            missing_skills = calculate_missing_skills(skills_list, top_role)
+            # Recalculate correctly
+            missing_skills = []
+            normalized_user_skills = set()
+            for s in skills_list:
+                if isinstance(s, str):
+                    normalized_user_skills.add(s.lower().strip())
+                elif isinstance(s, dict) and 'name' in s: # Handle obj if applicable
+                     normalized_user_skills.add(s['name'].lower().strip())
+
+            print(f"User Skills (Norm): {normalized_user_skills}")
+
+            required = ROLE_SKILLS_MAP.get(top_role, [])
+            for req_skill in required:
+                if req_skill.lower().strip() not in normalized_user_skills:
+                    missing_skills.append(req_skill)
+            
             if missing_skills:
                 # Add specific recommendations to insights
                 # We limit to top 3 to avoid overwhelming
@@ -602,7 +646,7 @@ def predict():
             if cgpa < 7.0:
                  insights.append("Academic Performance: Consistent academic performance (CGPA > 7.0) is often valued by recruiters.")
             if has_certs == "No":
-                insights.append("Certifications: Adding industry-recognized certifications can significantly boost your profile.")
+                 insights.append("Certifications: Adding industry-recognized certifications can significantly boost your profile.")
             if internship == "No":
                  insights.append("Experience: Look for internship opportunities to gain practical experience.")
             
