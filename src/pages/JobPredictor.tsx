@@ -226,17 +226,7 @@ const JobPredictor = () => {
                                 </div>
                             </div>
 
-                            {/* Feedback Form */}
-                            {showFeedback && (
-                                <div style={{ gridColumn: '1 / -1' }}>
-                                    <FeedbackForm
-                                        predictedRole={resultData.role}
-                                        userId={user?.id || 'anonymous'}
-                                        predictionId={resultData.prediction_id}
-                                        onClose={() => setShowFeedback(false)}
-                                    />
-                                </div>
-                            )}
+
 
                             {/* 3. Explanation & Insights */}
                             <div className="info-card" style={{ gridColumn: '1 / -1' }}>
@@ -268,6 +258,18 @@ const JobPredictor = () => {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Feedback Form - Moved to Bottom */}
+                            {showFeedback && (
+                                <div style={{ gridColumn: '1 / -1', marginTop: '2rem' }}>
+                                    <FeedbackForm
+                                        predictedRole={resultData.role}
+                                        userId={user?.id || 'anonymous'}
+                                        predictionId={resultData.prediction_id}
+                                        onClose={() => setShowFeedback(false)}
+                                    />
+                                </div>
+                            )}
 
                         </div>
                     )}

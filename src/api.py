@@ -151,6 +151,34 @@ def init_db():
         except sqlite3.OperationalError as e:
              print(f"Migration warning: {e}")
 
+    if 'flag_status' not in columns:
+        print("Migrating DB: Adding 'flag_status' column to history table...")
+        try:
+             cursor.execute("ALTER TABLE history ADD COLUMN flag_status TEXT DEFAULT 'Pending'")
+        except sqlite3.OperationalError as e:
+             print(f"Migration warning: {e}")
+
+    if 'flag_reason' not in columns:
+        print("Migrating DB: Adding 'flag_reason' column to history table...")
+        try:
+             cursor.execute("ALTER TABLE history ADD COLUMN flag_reason TEXT")
+        except sqlite3.OperationalError as e:
+             print(f"Migration warning: {e}")
+
+    if 'flag_status' not in columns:
+        print("Migrating DB: Adding 'flag_status' column to history table...")
+        try:
+             cursor.execute("ALTER TABLE history ADD COLUMN flag_status TEXT DEFAULT 'Pending'")
+        except sqlite3.OperationalError as e:
+             print(f"Migration warning: {e}")
+
+    if 'flag_reason' not in columns:
+        print("Migrating DB: Adding 'flag_reason' column to history table...")
+        try:
+             cursor.execute("ALTER TABLE history ADD COLUMN flag_reason TEXT")
+        except sqlite3.OperationalError as e:
+             print(f"Migration warning: {e}")
+
     # Admin Users Table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admin_users (
@@ -159,6 +187,37 @@ def init_db():
             password TEXT NOT NULL
         )
     ''')
+    
+    # ... (Seeding logic remains same, skipping for brevity in replacement chunk context compatibility if needed, but here I should keep context) ...
+    # Wait, replace_file_content replaces the whole block. I need to keep the seeding logic.
+    # The previous view_file showed I can anchor on 'if 'specialization' not in columns:' and end before 'Admin Users Table creation'
+    # Actually, I'll target the DB init section more precisely.
+
+    # Let's just do the whole init_db modification in one chunk if possible, or split.
+    # I'll retarget to just insert the new column checks before Admin Users Table.
+
+    # ... (Previous code)
+    
+    # Admin Users Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+    
+    # ...
+    
+    # RE-TARGETING for `admin_predictions` and `admin_flag` below.
+    # I will do this in the next tool call if the file is too big or blocks differ too much.
+    # `api.py` is fairly large. I should probably use multi_replace for safety.
+
+    # Switching to multi-replace in next turn or careful chunking here.
+    # I'll try to just do the init_db part here.
+    
+    # actually I will cancel this and use multi_replace_file_content.
+
     
     # Seed default admin
     cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('admin',))
@@ -303,19 +362,36 @@ def admin_stats():
         
         conn.close()
         
-        # Model Info (Last Modified of model file)
-        model_path = os.path.join(MODEL_DIR, 'job_model.pkl')
-        last_trained = "Unknown"
-        if os.path.exists(model_path):
-            timestamp = os.path.getmtime(model_path)
-            last_trained = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+        # Model Info (Read from metadata json)
+        metadata_path = os.path.join(MODEL_DIR, 'model_metadata.json')
+        model_metadata = {}
+        
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    model_metadata = json.load(f)
+            except:
+                pass
+                
+        # Default values if metadata missing
+        last_trained = model_metadata.get('last_trained', 'Unknown')
+        accuracy = model_metadata.get('accuracy', 'N/A')
+        dataset_size = model_metadata.get('dataset_size', 'N/A')
+        training_status = model_metadata.get('status', 'Unknown')
+        
+        # Determine overall model status
+        model_status = 'Active' if model is not None else 'Inactive'
 
         return jsonify({
             'total_predictions': total_predictions,
             'total_flagged': total_flagged,
             'total_users': total_users,
             'role_distribution': role_dist,
-            'last_trained': last_trained
+            'last_trained': last_trained,
+            'accuracy': accuracy,
+            'dataset_size': dataset_size,
+            'training_status': training_status,
+            'model_status': model_status
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -329,8 +405,11 @@ def admin_predictions():
         
         # enhanced query to get feedback rating
         # Now joining strictly on ID
+        # enhanced query to include flag details and feedback
         query = '''
-            SELECT h.id, h.user_id, h.role, h.confidence, h.timestamp, h.flagged, h.degree, h.specialization, f.relevance_rating as rating
+            SELECT h.id, h.user_id, h.role, h.confidence, h.timestamp, h.flagged, h.degree, h.specialization, 
+                   h.flag_status, h.flag_reason,
+                   f.relevance_rating as rating, f.feedback_reason, f.comments
             FROM history h
             LEFT JOIN feedback f ON h.id = f.prediction_id
             ORDER BY h.timestamp DESC 
@@ -351,12 +430,34 @@ def admin_flag():
     try:
         data = request.get_json()
         log_id = data.get('id')
-        new_status = data.get('flagged', 0)
+        new_flag_val = data.get('flagged')
+        new_status = data.get('status')
+        new_reason = data.get('reason')
         
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
-        cur.execute("UPDATE history SET flagged = ? WHERE id = ?", (new_status, log_id))
-        conn.commit()
+        
+        updates = []
+        params = []
+        
+        if new_flag_val is not None:
+            updates.append("flagged = ?")
+            params.append(new_flag_val)
+        
+        if new_status:
+            updates.append("flag_status = ?")
+            params.append(new_status)
+            
+        if new_reason:
+            updates.append("flag_reason = ?")
+            params.append(new_reason)
+            
+        if updates:
+            sql = f"UPDATE history SET {', '.join(updates)} WHERE id = ?"
+            params.append(log_id)
+            cur.execute(sql, tuple(params))
+            conn.commit()
+        
         conn.close()
         
         return jsonify({'message': 'Updated flag status'}), 200
@@ -409,7 +510,7 @@ def admin_all_feedback():
         # Join with history to get confidence and original role if needed, though feedback has snapshot
         # We'll just fetch from feedback table and maybe join history for extra context if needed
         query = '''
-            SELECT f.*, h.confidence 
+            SELECT f.*, h.confidence, h.flagged
             FROM feedback f
             LEFT JOIN history h ON f.prediction_id = h.id
             ORDER BY f.timestamp DESC
@@ -560,11 +661,20 @@ def predict():
         certs = data.get('certifications', [])
         has_certs = "Yes" if len(certs) > 0 else "No"
         
+        # Calculate Programming Skill Level
+        # Heuristic: Count valid skills
+        skill_count = len(skills_list)
+        if skill_count >= 5:
+            prog_skill = "Advanced"
+        elif skill_count >= 3:
+            prog_skill = "Intermediate"
+        else:
+            prog_skill = "Beginner"
+
         # Prepare DataFrame
         features = pd.DataFrame([{
             'degree': degree,
             'specialization': specialization,
-            'cgpa': cgpa,
             'internship_experience': internship,
             'certifications': has_certs,
             'project_count': project_count

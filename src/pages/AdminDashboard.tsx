@@ -72,7 +72,9 @@ export default function AdminDashboard() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, flagged: newStatus })
             });
-            setLogs(logs.map(log => log.id === id ? { ...log, flagged: newStatus } : log));
+            // Update both logs and feedbackLogs to ensure consistency
+            setLogs(prev => prev.map(log => log.id === id ? { ...log, flagged: newStatus } : log));
+            setFeedbackLogs(prev => prev.map(f => f.prediction_id === id ? { ...f, flagged: newStatus } : f));
             fetchStats();
         } catch (error) {
             console.error("Error flagging:", error);
@@ -93,6 +95,7 @@ export default function AdminDashboard() {
             const data = await res.json();
             setUploadStatus(data.message || 'Done');
             setFile(null);
+            fetchStats(); // Refresh stats to show new model info
         } catch (error) {
             setUploadStatus('Error');
             console.error(error);
@@ -170,7 +173,11 @@ export default function AdminDashboard() {
                     <h3 className="card-title">Model Status</h3>
                 </div>
                 <div className="card-content">
-                    <span className="profile-value">Active</span>
+                    <span className="profile-value" style={{
+                        color: stats?.model_status === 'Active' ? '#22c55e' : '#ef4444'
+                    }}>
+                        {stats?.model_status || 'Unknown'}
+                    </span>
                     <span className="profile-label" style={{ display: 'block', marginTop: '5px' }}>
                         Last Trained: {stats?.last_trained || 'Unknown'}
                     </span>
@@ -182,19 +189,70 @@ export default function AdminDashboard() {
     const renderDataSection = () => {
         if (activeTab === 'dashboard') return renderOverview();
         if (activeTab === 'model') return (
-            <div className="info-card" style={{ maxWidth: '800px' }}>
-                <div className="card-header">
-                    <span className="card-icon">⚙️</span>
-                    <h3 className="card-title">Model Retraining</h3>
+            <div className="cards-grid">
+                {/* Metrics Cards */}
+                <div className="info-card">
+                    <div className="card-header">
+                        <span className="card-icon">📊</span>
+                        <h3 className="card-title">Dataset Size</h3>
+                    </div>
+                    <div className="card-content">
+                        <span className="profile-value highlight">{stats?.dataset_size || 'N/A'}</span>
+                        <span className="profile-label">Total Rows</span>
+                    </div>
                 </div>
-                <div className="card-content" style={{ gap: '1.5rem' }}>
-                    <p style={{ opacity: 0.8 }}>Upload a new CSV/TSV dataset to retrain the underlying Machine Learning model.</p>
-                    <input type="file" onChange={handleFileChange} accept=".csv, .tsv" style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }} />
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        <button className="edit-profile-btn" onClick={handleRetrain} disabled={!file}>
-                            Upload & Retrain
-                        </button>
-                        <span>{uploadStatus}</span>
+
+                <div className="info-card">
+                    <div className="card-header">
+                        <span className="card-icon">🎯</span>
+                        <h3 className="card-title">Model Accuracy</h3>
+                    </div>
+                    <div className="card-content">
+                        <span className="profile-value highlight">{stats?.accuracy || 'N/A'}</span>
+                        <span className="profile-label">On Test Set</span>
+                    </div>
+                </div>
+
+                <div className="info-card">
+                    <div className="card-header">
+                        <span className="card-icon">⏱️</span>
+                        <h3 className="card-title">Last Training</h3>
+                    </div>
+                    <div className="card-content">
+                        <span className="profile-value" style={{
+                            color: stats?.training_status === 'Success' ? '#22c55e' : '#ef4444'
+                        }}>
+                            {stats?.training_status || 'Unknown'}
+                        </span>
+                        <span className="profile-label">{stats?.last_trained || '-'}</span>
+                    </div>
+                </div>
+
+                {/* Upload Section (Full Width) */}
+                <div className="info-card" style={{ gridColumn: '1 / -1' }}>
+                    <div className="card-header">
+                        <span className="card-icon">⚙️</span>
+                        <h3 className="card-title">Retrain Model</h3>
+                    </div>
+                    <div className="card-content" style={{ gap: '1.5rem' }}>
+                        <p style={{ opacity: 0.8 }}>Upload a new CSV/TSV dataset to retrain the underlying Machine Learning model.</p>
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input type="file" onChange={handleFileChange} accept=".csv, .tsv" style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', flex: 1, minWidth: '250px' }} />
+                            <button className="edit-profile-btn" onClick={handleRetrain} disabled={!file || uploadStatus === 'Uploading...'}>
+                                {uploadStatus === 'Uploading...' ? 'Processing...' : 'Upload & Retrain'}
+                            </button>
+                        </div>
+                        {uploadStatus && (
+                            <div style={{
+                                marginTop: '1rem',
+                                padding: '1rem',
+                                borderRadius: '8px',
+                                background: uploadStatus.includes('Error') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                                color: uploadStatus.includes('Error') ? '#ef4444' : '#22c55e'
+                            }}>
+                                {uploadStatus}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -297,11 +355,18 @@ export default function AdminDashboard() {
                                                 </button>
                                             )}
                                             <button
-                                                onClick={() => handleFlag(item.prediction_id, 1)}
-                                                style={{ cursor: 'pointer', background: 'rgba(239, 68, 68, 0.2)', border: 'none', color: '#ef4444', padding: '4px 8px', borderRadius: '4px' }}
-                                                title="Flag Prediction"
+                                                onClick={() => handleFlag(item.prediction_id, item.flagged ? 1 : 0)}
+                                                style={{
+                                                    cursor: 'pointer',
+                                                    background: item.flagged ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.2)',
+                                                    border: item.flagged ? '1px solid #ef4444' : 'none',
+                                                    color: '#ef4444',
+                                                    padding: '4px 8px',
+                                                    borderRadius: '4px'
+                                                }}
+                                                title={item.flagged ? "Unflag" : "Flag Prediction"}
                                             >
-                                                🚩
+                                                {item.flagged ? '❌' : '🚩'}
                                             </button>
                                         </td>
                                     </tr>
@@ -322,7 +387,7 @@ export default function AdminDashboard() {
             <div className="info-card">
                 <div className="card-header">
                     <span className="card-icon">{isFlaggedView ? '🚩' : '📝'}</span>
-                    <h3 className="card-title">{isFlaggedView ? 'Flagged Records' : 'All Prediction Logs'}</h3>
+                    <h3 className="card-title">{isFlaggedView ? 'Flagged Records Management' : 'All Prediction Logs'}</h3>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem', color: 'inherit' }}>
@@ -332,61 +397,138 @@ export default function AdminDashboard() {
                                 <th style={{ padding: '1rem' }}>User ID</th>
                                 <th style={{ padding: '1rem' }}>Background</th>
                                 <th style={{ padding: '1rem' }}>Pred. Role</th>
+                                <th style={{ padding: '1rem' }}>Rating</th>
                                 <th style={{ padding: '1rem' }}>Conf.</th>
-                                <th style={{ padding: '1rem' }}>Feedback</th>
+                                {isFlaggedView && <th style={{ padding: '1rem' }}>Reason</th>}
                                 <th style={{ padding: '1rem' }}>Status</th>
                                 <th style={{ padding: '1rem' }}>Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {displayLogs.map(log => (
-                                <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <td style={{ padding: '1rem', whiteSpace: 'nowrap', fontSize: '0.9rem', opacity: 0.7 }}>
-                                        {new Date(log.timestamp).toLocaleString(undefined, {
-                                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                        })}
-                                    </td>
-                                    <td style={{ padding: '1rem', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.user_id}>
-                                        {log.user_id}
-                                    </td>
-                                    <td style={{ padding: '1rem' }}>
-                                        <div style={{ fontSize: '0.95rem' }}>{log.degree || '-'}</div>
-                                        <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{log.specialization || '-'}</div>
-                                    </td>
-                                    <td style={{ padding: '1rem', fontWeight: 500 }}>{log.role}</td>
-                                    <td style={{ padding: '1rem' }}>{(log.confidence * 100).toFixed(0)}%</td>
-                                    <td style={{ padding: '1rem' }}>
-                                        {log.rating ? (
-                                            <span title={`${log.rating}/5 Stars`}>
-                                                {'⭐'.repeat(log.rating)}
-                                            </span>
-                                        ) : (
-                                            <span style={{ opacity: 0.3 }}>-</span>
+                            {displayLogs.map(log => {
+                                // Determine reason to show
+                                let reasonDisplay = log.flag_reason || '-';
+                                if (log.feedback_reason) {
+                                    // Parse if JSON string
+                                    let fbReasons = log.feedback_reason;
+                                    try {
+                                        if (typeof fbReasons === 'string') fbReasons = JSON.parse(fbReasons);
+                                    } catch { }
+                                    if (Array.isArray(fbReasons)) reasonDisplay = fbReasons.join(', ');
+                                    else reasonDisplay = String(fbReasons);
+                                } else if (log.comments) {
+                                    reasonDisplay = log.comments;
+                                }
+
+                                return (
+                                    <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <td style={{ padding: '1rem', whiteSpace: 'nowrap', fontSize: '0.9rem', opacity: 0.7 }}>
+                                            {new Date(log.timestamp).toLocaleString(undefined, {
+                                                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                        </td>
+                                        <td style={{ padding: '1rem', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.user_id}>
+                                            {log.user_id}
+                                        </td>
+                                        <td style={{ padding: '1rem' }}>
+                                            <div style={{ fontSize: '0.95rem' }}>{log.degree || '-'}</div>
+                                            <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{log.specialization || '-'}</div>
+                                        </td>
+                                        <td style={{ padding: '1rem', fontWeight: 500 }}>{log.role}</td>
+                                        <td style={{ padding: '1rem' }}>
+                                            {log.rating ? '⭐'.repeat(log.rating) : '-'}
+                                        </td>
+                                        <td style={{ padding: '1rem' }}>{(log.confidence * 100).toFixed(0)}%</td>
+
+                                        {isFlaggedView && (
+                                            <td style={{ padding: '1rem', maxWidth: '150px', fontSize: '0.9rem' }}>
+                                                {reasonDisplay}
+                                            </td>
                                         )}
-                                    </td>
-                                    <td style={{ padding: '1rem' }}>
-                                        <span style={{
-                                            padding: '4px 8px', borderRadius: '4px',
-                                            background: log.flagged ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            color: log.flagged ? '#ef4444' : '#22c55e',
-                                            fontSize: '0.85rem'
-                                        }}>
-                                            {log.flagged ? 'Flagged' : 'OK'}
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '1rem' }}>
-                                        <button
-                                            onClick={() => handleFlag(log.id, log.flagged)}
-                                            style={{
-                                                background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
-                                                color: 'inherit', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem'
-                                            }}
-                                        >
-                                            {log.flagged ? 'Unflag' : 'Flag'}
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+
+                                        <td style={{ padding: '1rem' }}>
+                                            {isFlaggedView ? (
+                                                <span style={{
+                                                    padding: '4px 8px', borderRadius: '4px',
+                                                    background: log.flag_status === 'Resolved' ? 'rgba(34, 197, 94, 0.2)' :
+                                                        log.flag_status === 'Reviewed' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(234, 179, 8, 0.2)',
+                                                    color: log.flag_status === 'Resolved' ? '#22c55e' :
+                                                        log.flag_status === 'Reviewed' ? '#3b82f6' : '#eab308',
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    {log.flag_status || 'Pending'}
+                                                </span>
+                                            ) : (
+                                                <span style={{
+                                                    padding: '4px 8px', borderRadius: '4px',
+                                                    background: log.flagged ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                                                    color: log.flagged ? '#ef4444' : '#22c55e',
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    {log.flagged ? 'Flagged' : 'OK'}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td style={{ padding: '1rem' }}>
+                                            {isFlaggedView ? (
+                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                    {log.flag_status !== 'Resolved' && (
+                                                        <button
+                                                            onClick={() => {
+                                                                fetch('http://localhost:5000/admin/flag', {
+                                                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ id: log.id, status: 'Resolved' })
+                                                                }).then(() => {
+                                                                    setLogs(prev => prev.map(l => l.id === log.id ? { ...l, flag_status: 'Resolved' } : l));
+                                                                    fetchStats();
+                                                                });
+                                                            }}
+                                                            title="Resolve"
+                                                            style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid #22c55e', color: '#22c55e', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+                                                        >
+                                                            ✅
+                                                        </button>
+                                                    )}
+                                                    {log.flag_status === 'Pending' && (
+                                                        <button
+                                                            onClick={() => {
+                                                                fetch('http://localhost:5000/admin/flag', {
+                                                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify({ id: log.id, status: 'Reviewed' })
+                                                                }).then(() => {
+                                                                    setLogs(prev => prev.map(l => l.id === log.id ? { ...l, flag_status: 'Reviewed' } : l));
+                                                                    fetchStats();
+                                                                });
+                                                            }}
+                                                            title="Mark as Reviewed"
+                                                            style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', color: '#3b82f6', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+                                                        >
+                                                            👁️
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleFlag(log.id, 1)} // 1 means currently flagged, so this toggles to 0
+                                                        title="Dismiss / Unflag"
+                                                        style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+                                                    >
+                                                        ❌
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleFlag(log.id, log.flagged)}
+                                                    style={{
+                                                        background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
+                                                        color: 'inherit', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem'
+                                                    }}
+                                                >
+                                                    {log.flagged ? 'Unflag' : 'Flag'}
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )
+                            })}
                         </tbody>
                     </table>
                     {displayLogs.length === 0 && <p style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>No records found.</p>}
