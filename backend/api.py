@@ -179,6 +179,22 @@ def init_db():
         except sqlite3.OperationalError as e:
              print(f"Migration warning: {e}")
 
+    # Users Table (Standard + Google Auth)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT,
+            googleId TEXT,
+            createdAt DATETIME,
+            educations TEXT,
+            certifications TEXT,
+            skills TEXT,
+            placementStatus TEXT
+        )
+    ''')
+
     # Admin Users Table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admin_users (
@@ -1130,6 +1146,8 @@ def delete_user(id):
     except Exception as e:
         print(f"Delete user error: {e}")
         return jsonify({'success': False, 'message': 'Failed to delete account'}), 500
+
+
 
 if __name__ == '__main__':
     init_db()

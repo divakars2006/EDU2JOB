@@ -1,0 +1,62 @@
+{
+  "hash": "788847ec",
+  "browserHash": "9d687dbb",
+  "optimized": {
+    "@react-oauth/google": {
+      "src": "../../node_modules/@react-oauth/google/dist/index.esm.js",
+      "file": "@react-oauth_google.js",
+      "fileHash": "66050d33",
+      "needsInterop": false
+    },
+    "@splinetool/react-spline": {
+      "src": "../../node_modules/@splinetool/react-spline/dist/react-spline.js",
+      "file": "@splinetool_react-spline.js",
+      "fileHash": "20fa316b",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "66da5e22",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "601ace5c",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "howler-BIBYQQ2M": {
+      "file": "howler-BIBYQQ2M.js"
+    },
+    "opentype-QB34GP2V": {
+      "file": "opentype-QB34GP2V.js"
+    },
+    "ui-4BXJGEWW": {
+      "file": "ui-4BXJGEWW.js"
+    },
+    "gaussian-splat-compression-PCUZJDY2": {
+      "file": "gaussian-splat-compression-PCUZJDY2.js"
+    },
+    "chunk-TW7NWLJG": {
+      "file": "chunk-TW7NWLJG.js"
+    },
+    "navmesh-MTUNZZRI": {
+      "file": "navmesh-MTUNZZRI.js"
+    },
+    "physics-GUTGEI3T": {
+      "file": "physics-GUTGEI3T.js"
+    },
+    "process-XEP3NVBG": {
+      "file": "process-XEP3NVBG.js"
+    },
+    "boolean-UFCQMGCL": {
+      "file": "boolean-UFCQMGCL.js"
+    },
+    "chunk-WNKWOKNR": {
+      "file": "chunk-WNKWOKNR.js"
+    }
+  }
+}

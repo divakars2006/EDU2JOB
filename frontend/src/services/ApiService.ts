@@ -32,6 +32,7 @@ interface ApiResponse {
 }
 
 const API_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 /**
  * Register a new user
@@ -191,4 +192,13 @@ export const updateUser = async (id: string, data: Partial<User> & { newPassword
             message: 'Failed to update user data.'
         };
     }
+};
+
+export const predictJob = async (data: any) => {
+    const response = await fetch(`${API_BASE_URL}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+    });
+    return response.json();
 };

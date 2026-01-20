@@ -7,3 +7,7 @@ pyjwt
 bcrypt
 google-auth
 requests
+pandas
+numpy
+joblib
+scikit-learn
