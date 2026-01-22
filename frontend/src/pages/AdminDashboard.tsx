@@ -43,7 +43,7 @@ export default function AdminDashboard() {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch('http://localhost:5000/admin/stats');
+            const res = await fetch('/api/admin/stats');
             const data = await res.json();
             setStats(data);
         } catch (error) {
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
     const fetchLogs = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/admin/predictions');
+            const res = await fetch('/api/admin/predictions');
             const data = await res.json();
             setLogs(data);
         } catch (error) {
@@ -67,7 +67,7 @@ export default function AdminDashboard() {
     const handleFlag = async (id: number, currentStatus: number) => {
         try {
             const newStatus = currentStatus === 1 ? 0 : 1;
-            await fetch('http://localhost:5000/admin/flag', {
+            await fetch('/api/admin/flag', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, flagged: newStatus })
@@ -91,7 +91,7 @@ export default function AdminDashboard() {
         formData.append('file', file);
         setUploadStatus('Uploading...');
         try {
-            const res = await fetch('http://localhost:5000/admin/retrain', { method: 'POST', body: formData });
+            const res = await fetch('/api/admin/retrain', { method: 'POST', body: formData });
             const data = await res.json();
             setUploadStatus(data.message || 'Done');
             setFile(null);
@@ -105,7 +105,7 @@ export default function AdminDashboard() {
     const fetchFeedback = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('http://localhost:5000/admin/all_feedback');
+            const res = await fetch('/api/admin/all_feedback');
             const data = await res.json();
             setFeedbackLogs(data);
         } catch (error) {
@@ -117,7 +117,7 @@ export default function AdminDashboard() {
 
     const handleFeedbackStatus = async (id: number, status: string) => {
         try {
-            await fetch('http://localhost:5000/admin/feedback/status', {
+            await fetch('/api/admin/feedback/status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, status })
@@ -475,7 +475,7 @@ export default function AdminDashboard() {
                                                     {log.flag_status !== 'Resolved' && (
                                                         <button
                                                             onClick={() => {
-                                                                fetch('http://localhost:5000/admin/flag', {
+                                                                fetch('/api/admin/flag', {
                                                                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                                     body: JSON.stringify({ id: log.id, status: 'Resolved' })
                                                                 }).then(() => {
@@ -492,7 +492,7 @@ export default function AdminDashboard() {
                                                     {log.flag_status === 'Pending' && (
                                                         <button
                                                             onClick={() => {
-                                                                fetch('http://localhost:5000/admin/flag', {
+                                                                fetch('/api/admin/flag', {
                                                                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                                                                     body: JSON.stringify({ id: log.id, status: 'Reviewed' })
                                                                 }).then(() => {

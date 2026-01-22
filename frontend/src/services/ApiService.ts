@@ -31,8 +31,8 @@ interface ApiResponse {
     token?: string;
 }
 
-const API_URL = 'http://localhost:5000/api';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_URL = '/api';
+const API_BASE_URL = '/api';
 
 /**
  * Register a new user
@@ -61,7 +61,7 @@ export const registerUser = async (data: RegisterData): Promise<ApiResponse> => 
 /**
  * Login user
  */
-const ADMIN_API_URL = 'http://localhost:5000/admin';
+const ADMIN_API_URL = '/api/admin';
 
 /**
  * Login user (Unified: Tries User DB first, then Admin DB)

@@ -6,7 +6,7 @@ import joblib
 import pandas as pd
 import numpy as np
 import subprocess
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import threading
 # Auth Imports
@@ -16,7 +16,10 @@ import time
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
-app = Flask(__name__)
+# Production Static Serving Setup
+# Requires 'npm run build' in frontend to populate dist
+frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+app = Flask(__name__, static_folder=frontend_dist, static_url_path='')
 CORS(app)
 
 # Configuration
@@ -332,20 +335,32 @@ def load_artifacts():
 
 # --- Admin Endpoints ---
 
-@app.route('/admin/login', methods=['POST'])
+@app.route('/api/admin/login', methods=['POST'])
 def admin_login():
     try:
         data = request.get_json()
         username = data.get('username')
         password = data.get('password')
         
+        print(f"DEBUG: Admin Login Attempt: '{username}' with pass '{password}'")
+
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
+        
+        # Debug: Check if user exists at all
+        cur.execute("SELECT * FROM admin_users WHERE username = ?", (username,))
+        found = cur.fetchone()
+        if found:
+             print(f"DEBUG: User found: {found}")
+        else:
+             print(f"DEBUG: User '{username}' NOT found in DB")
+
         cur.execute("SELECT * FROM admin_users WHERE username = ? AND password = ?", (username, password))
         user = cur.fetchone()
         conn.close()
         
         if user:
+            print("DEBUG: Login SUCCESS")
             return jsonify({'message': 'Login successful', 'token': 'dummy_admin_token', 'role': 'admin'}), 200
         else:
             return jsonify({'message': 'Invalid credentials'}), 401
@@ -354,7 +369,7 @@ def admin_login():
 
 
 
-@app.route('/admin/stats', methods=['GET'])
+@app.route('/api/admin/stats', methods=['GET'])
 def admin_stats():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -412,7 +427,7 @@ def admin_stats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/admin/predictions', methods=['GET'])
+@app.route('/api/admin/predictions', methods=['GET'])
 def admin_predictions():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -441,7 +456,7 @@ def admin_predictions():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/admin/flag', methods=['POST'])
+@app.route('/api/admin/flag', methods=['POST'])
 def admin_flag():
     try:
         data = request.get_json()
@@ -492,7 +507,7 @@ def run_retraining_script():
     except Exception as e:
         print(f"Retraining failed: {e}")
 
-@app.route('/admin/retrain', methods=['POST'])
+@app.route('/api/admin/retrain', methods=['POST'])
 def admin_retrain():
     try:
         if 'file' not in request.files:
@@ -516,7 +531,7 @@ def admin_retrain():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/admin/all_feedback', methods=['GET'])
+@app.route('/api/admin/all_feedback', methods=['GET'])
 def admin_all_feedback():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -549,7 +564,7 @@ def admin_all_feedback():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/admin/feedback/status', methods=['POST'])
+@app.route('/api/admin/feedback/status', methods=['POST'])
 def admin_feedback_status():
     try:
         data = request.get_json()
@@ -798,7 +813,8 @@ def predict():
                     conn.close()
                 except Exception as db_err:
                     print(f"DB Error: {db_err}")
-            
+    
+
             return jsonify({
                 'prediction_id': prediction_id,
                 'role': top_role,
@@ -1149,7 +1165,22 @@ def delete_user(id):
 
 
 
+# --- Catch-All Route for Helper Files & Frontend ---
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        # Fallback to index.html for React Router
+        if os.path.exists(os.path.join(app.static_folder, 'index.html')):
+             return send_from_directory(app.static_folder, 'index.html')
+        else:
+            return "Frontend not built. Run 'npm run build' in frontend directory.", 404
+
 if __name__ == '__main__':
+    # Initialize DB on start
     init_db()
     load_artifacts()
-    app.run(port=PORT, debug=True)
+    print(f"Server starting on http://localhost:{PORT}")
+    app.run(debug=True, port=PORT, host='0.0.0.0')
