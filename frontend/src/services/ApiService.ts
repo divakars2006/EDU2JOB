@@ -31,15 +31,17 @@ interface ApiResponse {
     token?: string;
 }
 
-const API_URL = '/api';
-const API_BASE_URL = '/api';
+
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    "https://edu2job-2-vs3g.onrender.com";
 
 /**
  * Register a new user
  */
 export const registerUser = async (data: RegisterData): Promise<ApiResponse> => {
     try {
-        const response = await fetch(`${API_URL}/register`, {
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -61,7 +63,7 @@ export const registerUser = async (data: RegisterData): Promise<ApiResponse> => 
 /**
  * Login user
  */
-const ADMIN_API_URL = '/api/admin';
+
 
 /**
  * Login user (Unified: Tries User DB first, then Admin DB)
@@ -69,7 +71,7 @@ const ADMIN_API_URL = '/api/admin';
 export const loginUser = async (data: LoginData): Promise<ApiResponse> => {
     try {
         // 1. Try Regular User Login
-        const response = await fetch(`${API_URL}/login`, {
+        const response = await fetch(`${API_BASE_URL}/api/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -83,7 +85,7 @@ export const loginUser = async (data: LoginData): Promise<ApiResponse> => {
         // We assume failure might be due to it being an admin account on the other backend
         console.log("User login failed, trying admin login...");
 
-        const adminResponse = await fetch(`${ADMIN_API_URL}/login`, {
+        const adminResponse = await fetch(`${API_BASE_URL}/admin/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -134,7 +136,7 @@ export const loginUser = async (data: LoginData): Promise<ApiResponse> => {
  */
 export const googleLogin = async (token: string): Promise<ApiResponse> => {
     try {
-        const response = await fetch(`${API_URL}/google-login`, {
+        const response = await fetch(`${API_BASE_URL}/api/google-login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -158,7 +160,7 @@ export const googleLogin = async (token: string): Promise<ApiResponse> => {
  */
 export const getUserById = async (id: string): Promise<ApiResponse> => {
     try {
-        const response = await fetch(`${API_URL}/user/${id}`);
+        const response = await fetch(`${API_BASE_URL}/api/user/${id}`);
         const result = await response.json();
         return result;
     } catch (error) {
@@ -175,7 +177,7 @@ export const getUserById = async (id: string): Promise<ApiResponse> => {
  */
 export const updateUser = async (id: string, data: Partial<User> & { newPassword?: string }): Promise<ApiResponse> => {
     try {
-        const response = await fetch(`${API_URL}/user/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/user/${id}`, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
