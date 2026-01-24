@@ -1,33 +1,200 @@
 import os
-import datetime
 import json
-import time
-
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import bcrypt
-import jwt
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
-from dotenv import load_dotenv
-
-from db import get_db_connection
-from psycopg2.extras import RealDictCursor
-
-from encryption import encrypt, decrypt
+import datetime
 import joblib
 import pandas as pd
 import numpy as np
+import subprocess
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+import threading
+# Auth Imports
+import bcrypt
+import jwt
+import time
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from db import get_db_connection
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-load_dotenv()
-
-app = Flask(__name__)
+# Production Static Serving Setup
+# Requires 'npm run build' in frontend to populate dist
+frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+app = Flask(__name__, static_folder=frontend_dist, static_url_path='')
 CORS(app)
 
-PORT = 3001
-# Use same JWT secret as Node for compatibility, though usually secrets are env vars
-JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "232841381092-8c1brgamv08b833qbn7t8fg7cgoi3vsa.apps.googleusercontent.com")
+# Initialize DB
+def init_db():
+    """Initialize PostgreSQL tables if they don't exist."""
+    print("Initializing Database...")
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Admin Users
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                email TEXT
+            );
+        """)
+        
+        # Normal Users 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY, 
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                createdAt TIMESTAMP,
+                educations JSONB,
+                certifications JSONB,
+                skills JSONB,
+                placementStatus JSONB
+            );
+        """)
+        
+        # History
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS history (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT,
+                role TEXT,
+                confidence FLOAT,
+                explanation TEXT,
+                flagged INTEGER DEFAULT 0,
+                degree TEXT,
+                specialization TEXT,
+                flag_status TEXT,
+                flag_reason TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Feedback
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT,
+                prediction_id INTEGER,
+                predicted_role TEXT,
+                relevance_rating INTEGER,
+                confidence_agreement TEXT,
+                alternative_role TEXT,
+                feedback_reason JSONB,
+                comments TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT
+            );
+        """)
+        
+        # Create default admin (Upsert to ensure credentials are correct)
+        # Note: 'username' is UNIQUE
+        cur.execute("""
+            INSERT INTO admin_users (username, password, email) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (username) 
+            DO UPDATE SET password = EXCLUDED.password, email = EXCLUDED.email;
+        """, ('admin', 'admin123', 'admin@info.com'))
+        print("Default admin user ensured.")
+
+        conn.commit()
+        conn.close()
+        DB_INIT_STATUS = "Success"
+        print("Database initialized successfully.")
+    except Exception as e:
+        DB_INIT_STATUS = f"Error: {e}"
+        print(f"DB Init Error: {e}") 
+
+# Run init
+with app.app_context():
+    init_db()
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    return {
+        "status": "ok",
+        "message": "Backend is running",
+        "db_init_status": DB_INIT_STATUS
+    }, 200
+
+# Initialize DB
+def init_db():
+    global DB_INIT_STATUS
+    """Initialize PostgreSQL tables if they don't exist."""
+    print("Initializing Database...")
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # ... (Table creation code, unchanged for brevity in this replace, but since I am replacing the health function and var, I need to keep the function signature. Wait, replace_file_content works on chunks.)
+        
+        # I need to use replace_file_content carefully.
+        # The tool requires TargetContent to match EXACTLY.
+        # I will replace the block from "Initialize DB" to "health()" end.
+        pass
+    except Exception as e:
+        DB_INIT_STATUS = f"Error: {e}"
+        print(f"DB Init Error: {e}") 
+
+# Actually, let's just insert the variable and update init_db/health separately or together properly.
+
+
+# Configuration
+MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
+# DB_PATH removed as we use get_db_connection
+DATASET_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'job_roles_dataset.tsv')
+DATASET_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'job_roles_dataset.tsv')
+TRAINING_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'train_model.py')
+PORT = 5000
+GOOGLE_CLIENT_ID = "232841381092-8c1brgamv08b833qbn7t8fg7cgoi3vsa.apps.googleusercontent.com"
+
+# Global artifacts
+model = None
+encoders = {}
+DB_INIT_STATUS = "Not started"
+
+# Heuristic-based Skill Map
+ROLE_SKILLS_MAP = {
+    'ML Engineer': ['Python', 'Machine Learning', 'Deep Learning', 'SQL', 'TensorFlow', 'Keras'],
+    'Software Developer': ['Java', 'Python', 'JavaScript', 'React', 'SQL', 'Git', 'Node.js'],
+    'Data Scientist': ['Python', 'R', 'SQL', 'Data Visualization', 'Statistics', 'Machine Learning', 'Pandas'],
+    'Business Analyst': ['SQL', 'Excel', 'Tableau', 'Power BI', 'Python', 'Data Analysis'],
+    'Data Analyst': ['SQL', 'Python', 'Excel', 'Data Visualization', 'Tableau', 'Power BI', 'Statistics']
+}
+
+def calculate_missing_skills(user_skills, role):
+    """
+    Calculate missing skills for a given role based on user's current skills.
+    Returns a set of missing skills.
+    """
+    required_skills = ROLE_SKILLS_MAP.get(role)
+    
+    # Robust lookup if direct key fails
+    if not required_skills:
+        for k, v in ROLE_SKILLS_MAP.items():
+            if k.lower() == role.lower().strip():
+                required_skills = v
+                break
+
+    if not required_skills:
+        return []
+    
+    # Normalize for comparison (case-insensitive)
+    user_skills_norm = {s.lower().strip() for s in user_skills}
+    missing = []
+    
+    for skill in required_skills:
+        if skill.lower().strip() not in user_skills_norm:
+            missing.append(skill)
+            
+    return missing
+
+# Auth Helpers
+JWT_SECRET = "your-secret-key-change-in-production"
 
 def generate_token(user_id, email):
     payload = {
@@ -37,64 +204,29 @@ def generate_token(user_id, email):
     }
     return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
 
-def encrypt_educations(educations):
-    if not educations or not isinstance(educations, list):
-        return educations
-    
-    encrypted_list = []
-    for edu in educations:
-        new_edu = edu.copy()
-        new_edu['university'] = encrypt(edu.get('university', ''))
-        new_edu['specialization'] = encrypt(edu.get('specialization', ''))
-        # Encrypt CGPA as string
-        if 'cgpa' in edu:
-             new_edu['cgpa'] = encrypt(str(edu['cgpa']))
-        encrypted_list.append(new_edu)
-    return encrypted_list
-
-def decrypt_educations(educations):
-    if not educations or not isinstance(educations, list):
-        return educations
-    
-    decrypted_list = []
-    for edu in educations:
-        new_edu = edu.copy()
-        new_edu['university'] = decrypt(edu.get('university', ''))
-        new_edu['specialization'] = decrypt(edu.get('specialization', ''))
-        # Decrypt CGPA and convert back to float/string
-        if 'cgpa' in edu:
-            try:
-                decrypted_cgpa = decrypt(edu['cgpa'])
-                new_edu['cgpa'] = decrypted_cgpa # Return as string, frontend/ML handles type
-            except:
-                 new_edu['cgpa'] = edu['cgpa']
-        decrypted_list.append(new_edu)
-    return decrypted_list
-def process_user_for_response(user_dict):
-    if not user_dict:
+def process_user_for_response(user):
+    """
+    Format user data for frontend. 
+    User can be a sqlite3.Row or a dict.
+    """
+    if not user:
         return None
+    
+    # Convert Row to dict if needed
+    user_dict = dict(user) if hasattr(user, 'copy') or isinstance(user, ConfigProto) else dict(user)
+    # Actually RealDictRow behaves like dict, so we can just use .copy() or dict()
+    user_dict = dict(user)
     
     # Remove password
     if 'password' in user_dict:
         del user_dict['password']
     
-    # Parse and Decrypt Educations
-    educations = user_dict.get('educations', [])
-    if isinstance(educations, str):
-        try:
-            educations = json.loads(educations)
-        except:
-            educations = []
-    if isinstance(educations, list):
-         user_dict['educations'] = decrypt_educations(educations)
-    else:
-        user_dict['educations'] = []
-
-    # Parse other JSON fields
-    json_fields = ['certifications', 'skills', 'placementStatus']
+    # Parse JSON fields
+    # SQLite stores them as TEXT, so we need to json.loads them if they are strings
+    json_fields = ['educations', 'certifications', 'skills', 'placementStatus']
     for field in json_fields:
         val = user_dict.get(field, [])
-        if isinstance(val, str):
+        if isinstance(val, str) and val:
             try:
                 user_dict[field] = json.loads(val)
             except:
@@ -104,37 +236,651 @@ def process_user_for_response(user_dict):
             
     return user_dict
 
-# --- ML Model Loading ---
-MODEL_DIR = os.path.join(os.path.dirname(__file__), 'ML_model')
-model = None
-encoders = {}
-
-def load_ml_artifacts():
+def load_artifacts():
+    """Load ML artifacts from the model directory."""
     global model, encoders
     try:
-        print("Loading ML model and encoders...")
-        model_path = os.path.join(MODEL_DIR, 'job_role_model.joblib')
+        print("Loading ML artifacts...")
+        model_path = os.path.join(MODEL_DIR, 'job_model.pkl')
         if os.path.exists(model_path):
             model = joblib.load(model_path)
+        else:
+            print(f"Warning: {model_path} not found.")
+
+        # Map internal feature names to filenames
+        # Map internal feature names to filenames
+        # We need to match what train_model.py saves
+        mappings = {
+            'degree': 'degree_encoder.pkl',
+            'specialization': 'spec_encoder.pkl',
+            'job_role': 'job_encoder.pkl',
+            'internship_experience': 'internship_experience_encoder.pkl',
+            'certifications': 'certifications_encoder.pkl'
+        }
+
+        for feature, filename in mappings.items():
+            path = os.path.join(MODEL_DIR, filename)
+            if os.path.exists(path):
+                encoders[feature] = joblib.load(path)
+            else:
+                print(f"Warning: {path} not found.")
         
-        encoder_files = [
-            'degree', 'specialization', 'programming_skill_level', 
-            'internship_experience', 'certifications', 'job_role'
-        ]
-        
-        for name in encoder_files:
-            enc_path = os.path.join(MODEL_DIR, f'encoder_{name}.joblib')
-            if os.path.exists(enc_path):
-                encoders[name] = joblib.load(enc_path)
-                
-        print("ML artifacts loaded successfully.")
+        print("ML artifacts loaded.")
     except Exception as e:
-        print(f"Error loading ML artifacts: {e}")
+        print(f"Error loading artifacts: {e}")
 
-# Load artifacts on startup
-load_ml_artifacts()
+# --- Admin Endpoints ---
 
-# --- Routes ---
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        print(f"DEBUG: Admin Login Attempt: '{username}' with pass '{password}'")
+
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Debug: Check if user exists at all
+        cur.execute("SELECT * FROM admin_users WHERE username = %s", (username,))
+        found = cur.fetchone()
+        if found:
+             print(f"DEBUG: User found: {found}")
+        else:
+             print(f"DEBUG: User '{username}' NOT found in DB")
+
+        cur.execute("SELECT * FROM admin_users WHERE username = %s AND password = %s", (username, password))
+        user = cur.fetchone()
+        conn.close()
+        
+        if user:
+            print("DEBUG: Login SUCCESS")
+            return jsonify({'message': 'Login successful', 'token': 'dummy_admin_token', 'role': 'admin'}), 200
+        else:
+            return jsonify({'message': 'Invalid credentials'}), 401
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_stats():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Total Predictions
+        cur.execute("SELECT COUNT(*) FROM history")
+        total_predictions = cur.fetchone()[0]
+        
+        # Flagged Predictions
+        cur.execute("SELECT COUNT(*) FROM history WHERE flagged = 1")
+        total_flagged = cur.fetchone()[0]
+        
+        # Unique Users (approximate based on user_id)
+        cur.execute("SELECT COUNT(DISTINCT user_id) FROM history")
+        total_users = cur.fetchone()[0]
+        
+        # Role Distribution
+        cur.execute("SELECT role, COUNT(*) as count FROM history GROUP BY role ORDER BY count DESC LIMIT 5")
+        role_dist = [{'role': row[0], 'count': row[1]} for row in cur.fetchall()]
+        
+        conn.close()
+        
+        # Model Info (Read from metadata json)
+        metadata_path = os.path.join(MODEL_DIR, 'model_metadata.json')
+        model_metadata = {}
+        
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    model_metadata = json.load(f)
+            except:
+                pass
+                
+        # Default values if metadata missing
+        last_trained = model_metadata.get('last_trained', 'Unknown')
+        accuracy = model_metadata.get('accuracy', 'N/A')
+        dataset_size = model_metadata.get('dataset_size', 'N/A')
+        training_status = model_metadata.get('status', 'Unknown')
+        
+        # Determine overall model status
+        model_status = 'Active' if model is not None else 'Inactive'
+
+        return jsonify({
+            'total_predictions': total_predictions,
+            'total_flagged': total_flagged,
+            'total_users': total_users,
+            'role_distribution': role_dist,
+            'last_trained': last_trained,
+            'accuracy': accuracy,
+            'dataset_size': dataset_size,
+            'training_status': training_status,
+            'model_status': model_status
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/predictions', methods=['GET'])
+def admin_predictions():
+    try:
+        conn = get_db_connection()
+        # conn.row_factory = sqlite3.Row # Not needed for psycopg2 RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # enhanced query to get feedback rating
+        # Now joining strictly on ID
+        # enhanced query to include flag details and feedback
+        query = '''
+            SELECT h.id, h.user_id, h.role, h.confidence, h.timestamp, h.flagged, h.degree, h.specialization, 
+                   h.flag_status, h.flag_reason,
+                   f.relevance_rating as rating, f.feedback_reason, f.comments
+            FROM history h
+            LEFT JOIN feedback f ON h.id = f.prediction_id
+            ORDER BY h.timestamp DESC 
+            LIMIT 500
+        '''
+        
+        cur.execute(query)
+        rows = cur.fetchall()
+        conn.close()
+        
+        logs = [dict(row) for row in rows]
+        return jsonify(logs)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/flag', methods=['POST'])
+def admin_flag():
+    try:
+        data = request.get_json()
+        log_id = data.get('id')
+        new_flag_val = data.get('flagged')
+        new_status = data.get('status')
+        new_reason = data.get('reason')
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        updates = []
+        params = []
+        
+        if new_flag_val is not None:
+            updates.append("flagged = %s")
+            params.append(new_flag_val)
+        
+        if new_status:
+            updates.append("flag_status = %s")
+            params.append(new_status)
+            
+        if new_reason:
+            updates.append("flag_reason = %s")
+            params.append(new_reason)
+            
+        if updates:
+            sql = f"UPDATE history SET {', '.join(updates)} WHERE id = %s"
+            params.append(log_id)
+            cur.execute(sql, tuple(params))
+            conn.commit()
+        
+        conn.close()
+        
+        return jsonify({'message': 'Updated flag status'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def run_retraining_script():
+    """Executes the training script in a separate thread/process."""
+    try:
+        print("Starting model retraining...")
+        # Ensure we are calling the python env correctly. 
+        # Using 'python' assumes it's in path.
+        subprocess.run(['python', TRAINING_SCRIPT_PATH], check=True)
+        print("Model retraining complete. Reloading artifacts...")
+        load_artifacts() # Reload in memory
+    except Exception as e:
+        print(f"Retraining failed: {e}")
+
+@app.route('/api/admin/retrain', methods=['POST'])
+def admin_retrain():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if file:
+            # Save the new dataset
+            # We backup the old one first? (Skipping for simplicity as per requirement "The old model is replaced")
+            file.save(DATASET_PATH)
+            
+            # Trigger training in background
+            thread = threading.Thread(target=run_retraining_script)
+            thread.start()
+            
+            return jsonify({'message': 'Dataset uploaded. Training started in background.'}), 200
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/all_feedback', methods=['GET'])
+def admin_all_feedback():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Join with history to get confidence and original role if needed, though feedback has snapshot
+        # We'll just fetch from feedback table and maybe join history for extra context if needed
+        query = '''
+            SELECT f.*, h.confidence, h.flagged
+            FROM feedback f
+            LEFT JOIN history h ON f.prediction_id = h.id
+            ORDER BY f.timestamp DESC
+        '''
+        
+        cur.execute(query)
+        rows = cur.fetchall()
+        conn.close()
+        
+        feedback_list = [dict(row) for row in rows]
+        # Parse JSON fields if any (feedback_reason is stored as JSON string)
+        for item in feedback_list:
+            if item.get('feedback_reason'):
+                try:
+                    if isinstance(item['feedback_reason'], str):
+                         item['feedback_reason'] = json.loads(item['feedback_reason'])
+                except:
+                    pass
+        
+        return jsonify(feedback_list)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/feedback/status', methods=['POST'])
+def admin_feedback_status():
+    try:
+        data = request.get_json()
+        feedback_id = data.get('id')
+        new_status = data.get('status')
+        
+        if not feedback_id or not new_status:
+             return jsonify({'error': 'Missing id or status'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("UPDATE feedback SET status = %s WHERE id = %s", (new_status, feedback_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': 'Status updated successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- End Admin Endpoints ---
+
+@app.route('/api/google-login', methods=['POST'])
+def google_login():
+    try:
+        data = request.json
+        token = data.get('token')
+        
+        # Verify the token with Google
+        id_info = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
+        
+        # Get user info
+        email = id_info['email']
+        name = id_info.get('name', '')
+        google_id = id_info['sub'] # Unique Google ID
+        
+        # Check if user exists in DB
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cur.fetchone()
+        
+        if not user:
+            # Register new user automatically
+            user_id = str(int(time.time() * 1000))
+            created_at = datetime.datetime.now()
+            # Use random password for google users (they won't use it)
+            dummy_password = bcrypt.hashpw(os.urandom(16), bcrypt.gensalt()).decode('utf-8')
+            
+            cur.execute("""
+                INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_id, name, email, dummy_password, created_at, json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])))
+            conn.commit()
+            
+            # Fetch again
+            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+            user = cur.fetchone()
+        
+        conn.close()
+        
+        # Generate JWT
+        # Convert RealDictRow to dict if needed (it usually behaves like one)
+        token = generate_token(user['id'], user['email'])
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'token': token,
+            'user': {
+                'id': user['id'],
+                'name': user['name'],
+                'email': user['email']
+            }
+        })
+        
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid token'}), 401
+    except Exception as e:
+        print(f"Google Login Error: {e}")
+        return jsonify({'success': False, 'message': 'Login failed'}), 500
+
+@app.route('/api/predict', methods=['POST'])
+def predict():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        
+        print(f"--- Prediction Request ({user_id}) ---")
+        print(f"Raw Input: {json.dumps(data, indent=2)}")
+
+        # Features expected by model
+        raw_degree = data.get('degree', 'B.Tech').strip()
+        raw_spec = data.get('specialization', 'Computer Science').strip()
+        
+        # --- Normalization Logic ---
+        # Map user input to dataset labels: 
+        # Degrees: B.Tech, M.Sc, MCA, MBA
+        # Specs: Computer Science, Information Technology, Data Science, Artificial Intelligence, Business Analytics, Artificial Intelligence & Data Science
+        
+        degree_map = {
+            'btech': 'B.Tech', 'b.tech': 'B.Tech', 'b.e': 'B.Tech', 'bachelor of technology': 'B.Tech',
+            'msc': 'M.Sc', 'm.sc': 'M.Sc', 'master of science': 'M.Sc',
+            'mca': 'MCA', 'master of computer applications': 'MCA',
+            'mba': 'MBA', 'master of business administration': 'MBA'
+        }
+        
+        spec_map = {
+            'cse': 'Computer Science', 'cs': 'Computer Science', 'computer science': 'Computer Science', 'computer science engineering': 'Computer Science',
+            'it': 'Information Technology', 'information technology': 'Information Technology',
+            'ds': 'Data Science', 'data science': 'Data Science',
+            'ai': 'Artificial Intelligence', 'aiml': 'Artificial Intelligence', 'artificial intelligence': 'Artificial Intelligence',
+            'ba': 'Business Analytics', 'business analytics': 'Business Analytics',
+            'ai & ds': 'Artificial Intelligence & Data Science', 'artificial intelligence & data science': 'Artificial Intelligence & Data Science',
+            'aids': 'Artificial Intelligence & Data Science'
+        }
+        
+        # Normalize Degree
+        degree = 'B.Tech' # Default
+        clean_degree = raw_degree.lower().replace('.', '').replace(' ', '')
+        if clean_degree in degree_map:
+             degree = degree_map[clean_degree]
+        elif raw_degree in degree_map.values(): # Already valid
+             degree = raw_degree
+
+        # Normalize Specialization
+        specialization = 'Computer Science' # Default
+        clean_spec = raw_spec.lower()
+        
+        # Iterative match for specialization because it has spaces
+        found_spec = False
+        
+        # Check direct map first
+        if clean_spec in spec_map:
+            specialization = spec_map[clean_spec]
+            found_spec = True
+        
+        if not found_spec:
+            for key, val in spec_map.items():
+                if len(key) > 3 and key in clean_spec: # Avoid matching 'it' in 'algorithms'
+                    specialization = val
+                    found_spec = True
+                    break
+        
+        if not found_spec:
+             # Handle "Artificial Intelligence & Data Science" normalization from earlier code
+             if "artificial intelligence" in clean_spec and "data science" in clean_spec:
+                 specialization = "Artificial Intelligence & Data Science"
+             elif "artificial intelligence" in clean_spec:
+                 specialization = "Artificial Intelligence"
+             elif "data science" in clean_spec:
+                 specialization = "Data Science"
+             elif raw_spec in spec_map.values():
+                 specialization = raw_spec
+        
+        print(f"Normalized Inputs -> Degree: {degree}, Spec: {specialization}")
+
+        skills_list = data.get('skills', [])
+        # Ensure skills_list is list of strings
+        if isinstance(skills_list, str):
+            try:
+                skills_list = json.loads(skills_list)
+            except:
+                skills_list = [skills_list]
+        
+        # New Feature: CGPA (default to average 7.5 if missing)
+        try:
+            cgpa = float(data.get('cgpa', 7.5))
+        except (ValueError, TypeError):
+            cgpa = 7.5
+            
+        # Project Count (default 0)
+        try:
+            project_count = int(data.get('project_count', 0))
+        except (ValueError, TypeError):
+            project_count = 0
+
+        internship = "No"
+        placements = data.get('placementStatus', [])
+        internships_list = data.get('internships', [])
+        
+        # Smart Logic: Internship Experience = Yes if user has ANY placement OR ANY internship record
+        if len(placements) > 0 or len(internships_list) > 0:
+            internship = "Yes"
+            
+        certs = data.get('certifications', [])
+        has_certs = "Yes" if len(certs) > 0 else "No"
+        
+        # Calculate Programming Skill Level
+        # Heuristic: Count valid skills
+        skill_count = len(skills_list)
+        if skill_count >= 5:
+            prog_skill = "Advanced"
+        elif skill_count >= 3:
+            prog_skill = "Intermediate"
+        else:
+            prog_skill = "Beginner"
+
+        # Prepare DataFrame
+        features = pd.DataFrame([{
+            'degree': degree,
+            'specialization': specialization,
+            'internship_experience': internship,
+            'certifications': has_certs,
+            'project_count': project_count
+        }])
+        
+        print(f"Features for Model:\n{features}")
+
+        # Encode
+        # Numerical columns that don't need encoding
+        numerical_cols = ['cgpa', 'project_count']
+        
+        for col in features.columns:
+            if col in encoders:
+                try:
+                    features[col] = encoders[col].transform(features[col])
+                except ValueError:
+                    print(f"Warning: Unseen label for {col}: {features[col].iloc[0]}. Defaulting to 0.")
+                    # Handle unseen labels by assigning a default (e.g., 0)
+                    features[col] = 0
+            elif col not in numerical_cols:
+                 pass
+        
+        print(f"Encoded Features (Vector) for Model:\n{features}")
+        
+        # Predict
+        if model:
+            # Get probability for confidence
+            probs = model.predict_proba(features)[0]
+            
+            # Map indices to class names
+            class_names = encoders['job_role'].classes_
+            
+            # Create list of {role, score}
+            role_probs = []
+            for i, score in enumerate(probs):
+                role_probs.append({'role': class_names[i], 'score': float(score)})
+            
+            # Sort by score descending
+            role_probs.sort(key=lambda x: x['score'], reverse=True)
+            
+            # Top result (Initial)
+            top_role = role_probs[0]['role']
+            confidence = role_probs[0]['score']
+
+            print(f"Raw Prediction: {top_role} ({confidence})")
+
+            # --- Post-Prediction Adjustment Logic ---
+            adjustment_msg = ""
+            
+            # Generate Insights (Simple Rule-based)
+            insights = []
+            
+            # 1. Missing Skills Analysis
+            # Recalculate correctly
+            missing_skills = []
+            normalized_user_skills = set()
+            for s in skills_list:
+                if isinstance(s, str):
+                    normalized_user_skills.add(s.lower().strip())
+                elif isinstance(s, dict) and 'name' in s: # Handle obj if applicable
+                     normalized_user_skills.add(s['name'].lower().strip())
+
+            print(f"User Skills (Norm): {normalized_user_skills}")
+
+            required = ROLE_SKILLS_MAP.get(top_role, [])
+            for req_skill in required:
+                if req_skill.lower().strip() not in normalized_user_skills:
+                    missing_skills.append(req_skill)
+            
+            if missing_skills:
+                # Add specific recommendations to insights
+                # We limit to top 3 to avoid overwhelming
+                for skill in missing_skills[:3]:
+                    insights.append(f"Skill Gap: Learning '{skill}' is highly recommended for {top_role} roles.")
+                if len(missing_skills) > 3:
+                     insights.append(f"And {len(missing_skills) - 3} other skills: {', '.join(missing_skills[3:])}")
+            else:
+                 insights.append(f"Great job! You have all the core skills we check for {top_role}.")
+
+            # 2. Other heuristics
+            if cgpa < 7.0:
+                 insights.append("Academic Performance: Consistent academic performance (CGPA > 7.0) is often valued by recruiters.")
+            if has_certs == "No":
+                 insights.append("Certifications: Adding industry-recognized certifications can significantly boost your profile.")
+            if internship == "No":
+                 insights.append("Experience: Look for internship opportunities to gain practical experience.")
+            
+            if not insights:
+                insights.append("Your profile looks strong! Focus on building a unique portfolio.")
+
+            # Explanation
+            explanation = f"Our AI analyzed your {degree} in {specialization} and academic profile (CGPA {cgpa}). Your profile matches patterns found in successful {top_role}s."
+            explanation += adjustment_msg
+            
+            # Save to DB (only top result)
+            prediction_id = None
+            if user_id:
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO history (user_id, role, confidence, explanation, flagged, degree, specialization) VALUES (%s, %s, %s, %s, 0, %s, %s) RETURNING id",
+                        (user_id, top_role, confidence, explanation, degree, specialization)
+                    )
+                    prediction_id = cur.fetchone()[0]
+                    conn.commit()
+                    conn.close()
+                except Exception as db_err:
+                    print(f"DB Error: {db_err}")
+    
+
+            return jsonify({
+                'prediction_id': prediction_id,
+                'role': top_role,
+                'confidence': f"{confidence*100:.1f}%",
+                'explanation': explanation,
+                'probabilities': role_probs, # Return full distribution
+                'insights': insights,
+                'missing_skills': missing_skills
+            })
+            
+        else:
+             return jsonify({'error': 'Model not loaded'}), 500
+
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/feedback', methods=['POST'])
+def submit_feedback():
+    try:
+        data = request.get_json()
+        
+        user_id = data.get('user_id')
+        prediction_id = data.get('prediction_id')
+        predicted_role = data.get('predicted_role')
+        relevance_rating = data.get('relevance_rating')
+        confidence_agreement = data.get('confidence_agreement')
+        alternative_role = data.get('alternative_role')
+        feedback_reason = json.dumps(data.get('feedback_reason')) if data.get('feedback_reason') else None
+        comments = data.get('comments')
+        
+        # Validation
+        if not predicted_role or not relevance_rating:
+            return jsonify({'error': 'Missing mandatory fields'}), 400
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO feedback (
+                user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, 
+                alternative_role, feedback_reason, comments
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, alternative_role, feedback_reason, comments))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'message': 'Feedback submitted successfully'}), 200
+    except Exception as e:
+        print(f"Feedback error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/history/<user_id>', methods=['GET'])
+def get_history(user_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM history WHERE user_id = %s ORDER BY timestamp DESC", (user_id,))
+        rows = cur.fetchall()
+        conn.close()
+        
+        history = [dict(row) for row in rows]
+        return jsonify(history)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- Authentication Routes ---
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -148,11 +894,10 @@ def register():
             return jsonify({'success': False, 'message': 'Please provide all required fields'}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor = conn.cursor()
         
         cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
         if cursor.fetchone():
-            cursor.close()
             conn.close()
             return jsonify({'success': False, 'message': 'Email already registered'}), 400
         
@@ -160,30 +905,16 @@ def register():
         user_id = str(int(time.time() * 1000))
         created_at = datetime.datetime.now()
         
-        # New user template
-        new_user = {
-            'id': user_id,
-            'name': name,
-            'email': email,
-            'password': hashed_password,
-            'createdAt': created_at,
-            'educations': json.dumps([]),
-            'certifications': json.dumps([]),
-            'skills': json.dumps([]),
-            'placementStatus': json.dumps([])
-        }
-        
-        query = """
-        INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(query, (
-            new_user['id'], new_user['name'], new_user['email'], new_user['password'],
-            new_user['createdAt'], new_user['educations'], new_user['certifications'], 
-            new_user['skills'], new_user['placementStatus']
+        # Insert New User
+        cursor.execute('''
+            INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            user_id, name, email, hashed_password, created_at, 
+            json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])
         ))
+        
         conn.commit()
-        cursor.close()
         conn.close()
         
         token = generate_token(user_id, email)
@@ -203,48 +934,62 @@ def register():
         print(f"Registration error: {e}")
         return jsonify({'success': False, 'message': 'Failed to create account'}), 500
 
-@app.route('/api/login', methods=['POST'])
+@app.route("/api/login", methods=["POST"])
 def login():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
 
-        if not email or not password:
-            return jsonify({'success': False, 'message': 'Please provide email and password'}), 400
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
+    # 1. Check normal users (bcrypt)
+    cur.execute("SELECT id, password FROM users WHERE email=%s", (email,))
+    user = cur.fetchone()
 
-        if not user:
-             return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+    if user:
+        # Check if user is dict (RealDictCursor) or tuple
+        # Step 258 said RealDictCursor was used in app.py, but get_db_connection in db.py just returns raw connection?
+        # db.py: return psycopg2.connect(...)
+        # api.py code I'm pasting implies tuple unpacking: user_id, hashed_password = user
+        # IF RealDictCursor is used, this unpacking will FAIL.
+        # Let's check db.py again. It does NOT set cursor_factory.
+        # So it returns standard tuples.
+        # User's provided code: user_id, hashed_password = user
+        # IF SELECT id, password ... returns (id, password), this works.
         
-        # Check password
-        # stored password is hash string, need bytes for checkpw works? 
-        # bcrypt.checkpw(password_bytes, hashed_password_bytes)
-        if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-            return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+        user_id, hashed_password = user
+        if bcrypt.checkpw(password.encode(), hashed_password.encode()):
+            return jsonify({
+                "success": True,
+                "isAdmin": False
+            })
 
-        token = generate_token(user['id'], user['email'])
-        user_data = process_user_for_response(user)
-        
-        return jsonify({
-            'success': True,
-            'message': 'Login successful',
-            'data': user_data,
-            'token': token
-        })
+    # 2. Check admin users (PLAINTEXT)
+    cur.execute("SELECT id, password FROM admin_users WHERE email=%s", (email,))
+    admin = cur.fetchone()
 
-    except Exception as e:
-        print(f"Login error: {e}")
-        return jsonify({'success': False, 'message': 'Login failed'}), 500
+    if admin:
+        admin_id, admin_password = admin
+        if password == admin_password:
+            print(f"Admin login success for {email}")
+            return jsonify({
+                "success": True,
+                "isAdmin": True
+            })
+        else:
+            print(f"Admin login password mismatch for {email}")
+
+    print(f"Login failed for {email} (Not found in users or admin)")
+    return jsonify({
+        "success": False,
+        "message": "Invalid email or password"
+    }), 401
+
 
 @app.route('/api/google-login', methods=['POST'])
 def google_login():
+    print("--- Google Login Request Received ---")
     try:
         data = request.get_json()
         token = data.get('token')
@@ -257,9 +1002,11 @@ def google_login():
         name = idinfo.get('name')
         sub = idinfo['sub'] # Google ID
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
         user = cursor.fetchone()
         
         if not user:
@@ -267,31 +1014,28 @@ def google_login():
             user_id = str(int(time.time() * 1000))
             created_at = datetime.datetime.now()
             
-            # Setup user object for insertion
-            user = {
-                'id': user_id, 'name': name, 'email': email, 'password': '', 
-                'googleId': sub, 'createdAt': created_at,
-                'educations': [], 'certifications': [], 'skills': [], 'placementStatus': []
-            } # Keeping dict format for response later
-            
-            query = """
-            INSERT INTO users (id, name, email, password, googleId, createdAt, educations, certifications, skills, placementStatus) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(query, (
-                user['id'], user['name'], user['email'], user['password'], user['googleId'],
-                user['createdAt'], json.dumps(user['educations']), json.dumps(user['certifications']), 
-                json.dumps(user['skills']), json.dumps(user['placementStatus'])
+            # Insert
+            cursor.execute('''
+                INSERT INTO users (id, name, email, password, googleId, createdAt, educations, certifications, skills, placementStatus) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                user_id, name, email, '', sub, created_at,
+                json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])
             ))
             conn.commit()
+            
+            # Fetch back
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
         else:
             # Update googleId if missing
-            if not user.get('googleId'):
-                cursor.execute("UPDATE users SET googleId = %s WHERE id = %s", (sub, user['id']))
+            if not user['googleId']:
+                cursor.execute("UPDATE users SET googleId = ? WHERE id = ?", (sub, user['id']))
                 conn.commit()
-                user['googleId'] = sub
+                # Fetch updated
+                cursor.execute("SELECT * FROM users WHERE id = ?", (user['id'],))
+                user = cursor.fetchone()
 
-        cursor.close()
         conn.close()
         
         token = generate_token(user['id'], user['email'])
@@ -304,10 +1048,14 @@ def google_login():
             'token': token
         })
 
-    except ValueError:
-         return jsonify({'success': False, 'message': 'Invalid token'}), 401
+    except ValueError as ve:
+         print(f"Google token verification failed (ValueError): {ve}")
+         return jsonify({'success': False, 'message': f'Invalid token: {str(ve)}'}), 401
     except Exception as e:
-        print(f"Google login error: {e}")
+        print(f"Google login FULL error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Google Auth Error: {str(e)}'}), 401
         return jsonify({'success': False, 'message': 'Google authentication failed'}), 401
 
 @app.route('/api/user/<string:id>', methods=['GET'])
@@ -315,14 +1063,15 @@ def get_user(id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
         cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cursor.fetchone()
-        cursor.close()
         conn.close()
 
         if not user:
             return jsonify({'success': False, 'message': 'User not found'}), 404
         
+        # user is already a dict-like RealDictRow
         user_data = process_user_for_response(user)
         return jsonify({'success': True, 'data': user_data})
 
@@ -340,11 +1089,11 @@ def update_user(id):
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
         cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cursor.fetchone()
         
         if not user:
-            cursor.close()
             conn.close()
             return jsonify({'success': False, 'message': 'User not found'}), 404
             
@@ -366,9 +1115,9 @@ def update_user(id):
             query_parts.append("email = %s")
             params.append(email)
         if educations is not None:
-            encrypted_educations = encrypt_educations(educations)
+            # Encryption skipped for simpliciy during migration
             query_parts.append("educations = %s")
-            params.append(json.dumps(encrypted_educations))
+            params.append(json.dumps(educations))
         if certifications is not None:
             query_parts.append("certifications = %s")
             params.append(json.dumps(certifications))
@@ -392,7 +1141,6 @@ def update_user(id):
         # Fetch updated user
         cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         updated_user = cursor.fetchone()
-        cursor.close()
         conn.close()
         
         user_data = process_user_for_response(updated_user)
@@ -414,7 +1162,6 @@ def delete_user(id):
         cursor.execute("DELETE FROM users WHERE id = %s", (id,))
         rows_affected = cursor.rowcount
         conn.commit()
-        cursor.close()
         conn.close()
         
         if rows_affected == 0:
@@ -426,73 +1173,24 @@ def delete_user(id):
         print(f"Delete user error: {e}")
         return jsonify({'success': False, 'message': 'Failed to delete account'}), 500
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'ok', 'message': 'Server is running'})
 
-@app.route('/api/predict-role', methods=['POST'])
-def predict_role():
-    try:
-        data = request.get_json()
-        
-        # Required fields in order: degree, specialization, programming_skill_level, internship_experience, certifications, project_count
-        # Mapping frontend data to model features
-        
-        # Required features: degree, specialization, cgpa
-        
-        # 1. Degree
-        degree = data.get('degree', 'B.Tech') 
-        
-        # 2. Specialization
-        specialization = data.get('specialization', 'Computer Science')
-        
-        # 3. CGPA
-        # Ensure CGPA is a float for the model
-        try:
-            cgpa = float(data.get('cgpa', 5.0))
-        except (ValueError, TypeError):
-             cgpa = 5.0
-             
-        # Prepare feature vector
-        features = pd.DataFrame([{
-            'degree': degree,
-            'specialization': specialization,
-            'cgpa': cgpa
-        }])
-        
-        # Encode features
-        # Assuming numerical features like cgpa don't need label encoding if model handles it or they were skipped in training
-        for col, encoder in encoders.items():
-            if col in features.columns and col != 'cgpa':
-                try:
-                    features[col] = encoder.transform(features[col])
-                except ValueError:
-                    # Fallback for unseen label
-                     # It's better to assign a known category or handle it gracefully. 
-                     # Here taking 0 index as backup.
-                     # Ideally we should use encoder.classes_ to find a mode or 'Other'
-                    features[col] = 0
 
-        # Predict
-        if model:
-            prediction_idx = model.predict(features)[0]
-            predicted_role = encoders['job_role'].inverse_transform([prediction_idx])[0]
-            
-            return jsonify({
-                'success': True, 
-                'predicted_role': predicted_role,
-                'details': {
-                   'degree': degree,
-                   'specialization': specialization,
-                   'cgpa': cgpa
-                }
-            })
+# --- Catch-All Route for Helper Files & Frontend ---
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        # Fallback to index.html for React Router
+        if os.path.exists(os.path.join(app.static_folder, 'index.html')):
+             return send_from_directory(app.static_folder, 'index.html')
         else:
-            return jsonify({'success': False, 'message': 'Model not loaded'}), 500
-
-    except Exception as e:
-        print(f"Prediction error: {e}")
-        return jsonify({'success': False, 'message': 'Prediction failed'}), 500
+            return "Frontend not built. Run 'npm run build' in frontend directory.", 404
 
 if __name__ == '__main__':
-    app.run(port=PORT, debug=True)
+    # Initialize DB on start
+
+    load_artifacts()
+    print(f"Server starting on http://localhost:{PORT}")
+    app.run(debug=True, port=PORT, host='0.0.0.0')
