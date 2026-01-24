@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './dashboard.css'; // Reuse dashboard styles
 import { useAuth } from '../authentication/AuthContext';
+import { submitFeedback } from '../services/ApiService';
 
 const FeedbackPage = () => {
     const { user } = useAuth();
@@ -81,22 +82,18 @@ const FeedbackPage = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:5000/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: user?.id || 'anonymous',
-                    prediction_id: predictionId,
-                    predicted_role: predictedRole,
-                    relevance_rating: relevanceRating,
-                    confidence_agreement: confidenceAgreement,
-                    alternative_role: alternativeRole,
-                    feedback_reason: feedbackReason,
-                    comments: comments
-                })
+            const response = await submitFeedback({
+                user_id: user?.id || 'anonymous',
+                prediction_id: predictionId,
+                predicted_role: predictedRole,
+                relevance_rating: relevanceRating,
+                confidence_agreement: confidenceAgreement,
+                alternative_role: alternativeRole,
+                feedback_reason: feedbackReason,
+                comments: comments
             });
 
-            if (response.ok) {
+            if (response && !response.error) {
                 setSubmitted(true);
             } else {
                 setError('Failed to submit feedback. Please try again.');

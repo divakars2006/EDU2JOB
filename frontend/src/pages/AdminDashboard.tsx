@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getAdminStats, getAdminLogs, flagPrediction, retrainModel, getAllFeedback, updateFeedbackStatus } from '../services/ApiService';
 import './dashboard.css'; // Reuse user dashboard styles
 
 export default function AdminDashboard() {
@@ -43,8 +44,7 @@ export default function AdminDashboard() {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch('/api/admin/stats');
-            const data = await res.json();
+            const data = await getAdminStats();
             setStats(data);
         } catch (error) {
             console.error("Error fetching stats:", error);
@@ -54,8 +54,7 @@ export default function AdminDashboard() {
     const fetchLogs = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/admin/predictions');
-            const data = await res.json();
+            const data = await getAdminLogs();
             setLogs(data);
         } catch (error) {
             console.error("Error fetching logs:", error);
@@ -67,11 +66,7 @@ export default function AdminDashboard() {
     const handleFlag = async (id: number, currentStatus: number) => {
         try {
             const newStatus = currentStatus === 1 ? 0 : 1;
-            await fetch('/api/admin/flag', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, flagged: newStatus })
-            });
+            await flagPrediction({ id, flagged: newStatus });
             // Update both logs and feedbackLogs to ensure consistency
             setLogs(prev => prev.map(log => log.id === id ? { ...log, flagged: newStatus } : log));
             setFeedbackLogs(prev => prev.map(f => f.prediction_id === id ? { ...f, flagged: newStatus } : f));
@@ -91,8 +86,7 @@ export default function AdminDashboard() {
         formData.append('file', file);
         setUploadStatus('Uploading...');
         try {
-            const res = await fetch('/api/admin/retrain', { method: 'POST', body: formData });
-            const data = await res.json();
+            const data = await retrainModel(formData);
             setUploadStatus(data.message || 'Done');
             setFile(null);
             fetchStats(); // Refresh stats to show new model info
@@ -105,8 +99,7 @@ export default function AdminDashboard() {
     const fetchFeedback = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch('/api/admin/all_feedback');
-            const data = await res.json();
+            const data = await getAllFeedback();
             setFeedbackLogs(data);
         } catch (error) {
             console.error("Error fetching feedback:", error);
@@ -117,11 +110,7 @@ export default function AdminDashboard() {
 
     const handleFeedbackStatus = async (id: number, status: string) => {
         try {
-            await fetch('/api/admin/feedback/status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, status })
-            });
+            await updateFeedbackStatus(id, status);
             setFeedbackLogs(prev => prev.map(f => f.id === id ? { ...f, status } : f));
         } catch (error) {
             console.error("Error updating status:", error);
@@ -475,10 +464,7 @@ export default function AdminDashboard() {
                                                     {log.flag_status !== 'Resolved' && (
                                                         <button
                                                             onClick={() => {
-                                                                fetch('/api/admin/flag', {
-                                                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                                    body: JSON.stringify({ id: log.id, status: 'Resolved' })
-                                                                }).then(() => {
+                                                                flagPrediction({ id: log.id, flagged: log.flagged, status: 'Resolved' }).then(() => {
                                                                     setLogs(prev => prev.map(l => l.id === log.id ? { ...l, flag_status: 'Resolved' } : l));
                                                                     fetchStats();
                                                                 });
@@ -492,10 +478,7 @@ export default function AdminDashboard() {
                                                     {log.flag_status === 'Pending' && (
                                                         <button
                                                             onClick={() => {
-                                                                fetch('/api/admin/flag', {
-                                                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                                    body: JSON.stringify({ id: log.id, status: 'Reviewed' })
-                                                                }).then(() => {
+                                                                flagPrediction({ id: log.id, flagged: log.flagged, status: 'Reviewed' }).then(() => {
                                                                     setLogs(prev => prev.map(l => l.id === log.id ? { ...l, flag_status: 'Reviewed' } : l));
                                                                     fetchStats();
                                                                 });
@@ -532,8 +515,8 @@ export default function AdminDashboard() {
                         </tbody>
                     </table>
                     {displayLogs.length === 0 && <p style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>No records found.</p>}
-                </div>
-            </div>
+                </div >
+            </div >
         );
     };
 

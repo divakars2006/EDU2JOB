@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './dashboard.css'; // Reuse dashboard styles for header
 import './JobPredictor.css'; // Reuse container styles or create new if needed
+import { getHistory } from '../services/ApiService';
 
 const HistoryPage = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -48,8 +49,7 @@ const HistoryPage = () => {
     const fetchHistory = async (userId: string) => {
         setLoading(true);
         try {
-            const response = await fetch(`http://localhost:5000/history/${userId}`);
-            const data = await response.json();
+            const data = await getHistory(userId);
             if (Array.isArray(data)) {
                 setHistory(data);
             }

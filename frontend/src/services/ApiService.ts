@@ -32,7 +32,7 @@ export const googleLogin = async (token: string) => {
 
 /* Predict */
 export const predictJob = async (data: any) => {
-    const response = await fetch(`${API_BASE_URL}/api/predict`, { // Note: Backend route in api.py seems to be /predict or /api/predict? Checking api.py...
+    const response = await fetch(`${API_BASE_URL}/predict`, { // Note: Backend route in api.py seems to be /predict or /api/predict? Checking api.py...
         // In api.py: @app.route('/predict', methods=['POST']) (Line 596)
         // Wait, api.py has @app.route('/predict') NOT /api/predict in the file I read in step 152/156.
         // Line 596: @app.route('/predict', methods=['POST'])
@@ -86,6 +86,63 @@ export const updateUser = async (id: string, data: any) => {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+    });
+    return response.json();
+};
+
+/* --- Admin Routes --- */
+
+export const getAdminStats = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/stats`);
+    return response.json();
+};
+
+export const getAdminLogs = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/predictions`);
+    return response.json();
+};
+
+export const flagPrediction = async (data: { id: number, flagged: number, status?: string }) => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    return response.json();
+};
+
+export const retrainModel = async (formData: FormData) => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/retrain`, {
+        method: 'POST',
+        body: formData // Content-Type header handled automatically by browser for FormData
+    });
+    return response.json();
+};
+
+export const getAllFeedback = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/all_feedback`);
+    return response.json();
+};
+
+export const updateFeedbackStatus = async (id: number, status: string) => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/feedback/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status })
+    });
+    return response.json();
+};
+
+export const getHistory = async (userId: string) => {
+    const response = await fetch(`${API_BASE_URL}/history/${userId}`);
+    return response.json();
+};
+
+export const submitFeedback = async (data: any) => {
+    const response = await fetch(`${API_BASE_URL}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
     });
     return response.json();
 };

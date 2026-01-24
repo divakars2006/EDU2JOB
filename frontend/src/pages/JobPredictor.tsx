@@ -3,6 +3,7 @@ import './JobPredictor.css';
 import './dashboard.css'; // Import dashboard styles for header/theme
 import MatchScoreChart from '../components/MatchScoreChart';
 import FeedbackForm from '../components/FeedbackForm';
+import { predictJob } from '../services/ApiService';
 
 const JobPredictor = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -75,15 +76,9 @@ const JobPredictor = () => {
             };
 
             const minLoadingTime = new Promise(resolve => setTimeout(resolve, 1500));
-            const request = fetch('http://localhost:5000/predict', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const request = predictJob(payload);
 
-            const [_, response] = await Promise.all([minLoadingTime, request]);
-
-            const result = await response.json();
+            const [_, result] = await Promise.all([minLoadingTime, request]);
             if (!result.error) {
                 setResultData(result); // Save full rich result
                 // Save specific prediction ID and Role for feedback

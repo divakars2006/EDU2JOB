@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './FeedbackForm.css';
+import { submitFeedback } from '../services/ApiService';
 
 interface FeedbackFormProps {
     predictedRole: string;
@@ -49,22 +50,18 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ predictedRole, userId, pred
         }
 
         try {
-            const response = await fetch('http://localhost:5000/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: userId,
-                    prediction_id: predictionId,
-                    predicted_role: predictedRole,
-                    relevance_rating: relevanceRating,
-                    confidence_agreement: confidenceAgreement,
-                    alternative_role: alternativeRole,
-                    feedback_reason: feedbackReason,
-                    comments: comments
-                })
+            const response = await submitFeedback({
+                user_id: userId,
+                prediction_id: predictionId,
+                predicted_role: predictedRole,
+                relevance_rating: relevanceRating,
+                confidence_agreement: confidenceAgreement,
+                alternative_role: alternativeRole,
+                feedback_reason: feedbackReason,
+                comments: comments
             });
 
-            if (response.ok) {
+            if (response && !response.error) {
                 setSubmitted(true);
                 // Auto close after 3 seconds
                 setTimeout(() => {
