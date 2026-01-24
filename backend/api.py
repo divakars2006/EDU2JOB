@@ -91,11 +91,15 @@ def init_db():
             );
         """)
         
-        # Create default admin if not exists
-        cur.execute("SELECT * FROM admin_users WHERE username = %s", ('admin',))
-        if not cur.fetchone():
-            cur.execute("INSERT INTO admin_users (username, password, email) VALUES (%s, %s, %s)", ('admin', 'admin123', 'admin@info.com'))
-            print("Default admin created.")
+        # Create default admin (Upsert to ensure credentials are correct)
+        # Note: 'username' is UNIQUE
+        cur.execute("""
+            INSERT INTO admin_users (username, password, email) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (username) 
+            DO UPDATE SET password = EXCLUDED.password, email = EXCLUDED.email;
+        """, ('admin', 'admin123', 'admin@info.com'))
+        print("Default admin user ensured.")
 
         conn.commit()
         conn.close()
@@ -942,11 +946,15 @@ def login():
     if admin:
         admin_id, admin_password = admin
         if password == admin_password:
+            print(f"Admin login success for {email}")
             return jsonify({
                 "success": True,
                 "isAdmin": True
             })
+        else:
+            print(f"Admin login password mismatch for {email}")
 
+    print(f"Login failed for {email} (Not found in users or admin)")
     return jsonify({
         "success": False,
         "message": "Invalid email or password"
@@ -1027,17 +1035,17 @@ def google_login():
 @app.route('/api/user/<string:id>', methods=['GET'])
 def get_user(id):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        cursor.execute("SELECT * FROM users WHERE id = ?", (id,))
+        cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cursor.fetchone()
         conn.close()
 
         if not user:
             return jsonify({'success': False, 'message': 'User not found'}), 404
         
+        # user is already a dict-like RealDictRow
         user_data = process_user_for_response(user)
         return jsonify({'success': True, 'data': user_data})
 
@@ -1053,11 +1061,10 @@ def update_user(id):
     try:
         data = request.get_json()
         
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        cursor.execute("SELECT * FROM users WHERE id = ?", (id,))
+        cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cursor.fetchone()
         
         if not user:
@@ -1076,37 +1083,37 @@ def update_user(id):
         params = []
         
         if name:
-            query_parts.append("name = ?")
+            query_parts.append("name = %s")
             params.append(name)
         if email:
-            query_parts.append("email = ?")
+            query_parts.append("email = %s")
             params.append(email)
         if educations is not None:
             # Encryption skipped for simpliciy during migration
-            query_parts.append("educations = ?")
+            query_parts.append("educations = %s")
             params.append(json.dumps(educations))
         if certifications is not None:
-            query_parts.append("certifications = ?")
+            query_parts.append("certifications = %s")
             params.append(json.dumps(certifications))
         if skills is not None:
-             query_parts.append("skills = ?")
+             query_parts.append("skills = %s")
              params.append(json.dumps(skills))
         if placement_status is not None:
-             query_parts.append("placementStatus = ?")
+             query_parts.append("placementStatus = %s")
              params.append(json.dumps(placement_status))
         if new_password:
              hashed = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-             query_parts.append("password = ?")
+             query_parts.append("password = %s")
              params.append(hashed)
              
         if query_parts:
-            sql = f"UPDATE users SET {', '.join(query_parts)} WHERE id = ?"
+            sql = f"UPDATE users SET {', '.join(query_parts)} WHERE id = %s"
             params.append(id)
             cursor.execute(sql, tuple(params))
             conn.commit()
             
         # Fetch updated user
-        cursor.execute("SELECT * FROM users WHERE id = ?", (id,))
+        cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         updated_user = cursor.fetchone()
         conn.close()
         
@@ -1124,9 +1131,9 @@ def update_user(id):
 @app.route('/api/user/<string:id>', methods=['DELETE'])
 def delete_user(id):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM users WHERE id = ?", (id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (id,))
         rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
