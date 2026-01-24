@@ -103,9 +103,11 @@ def init_db():
 
         conn.commit()
         conn.close()
+        DB_INIT_STATUS = "Success"
         print("Database initialized successfully.")
     except Exception as e:
-        print(f"DB Init Error: {e}")
+        DB_INIT_STATUS = f"Error: {e}"
+        print(f"DB Init Error: {e}") 
 
 # Run init
 with app.app_context():
@@ -115,8 +117,31 @@ with app.app_context():
 def health():
     return {
         "status": "ok",
-        "message": "Backend is running"
+        "message": "Backend is running",
+        "db_init_status": DB_INIT_STATUS
     }, 200
+
+# Initialize DB
+def init_db():
+    global DB_INIT_STATUS
+    """Initialize PostgreSQL tables if they don't exist."""
+    print("Initializing Database...")
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # ... (Table creation code, unchanged for brevity in this replace, but since I am replacing the health function and var, I need to keep the function signature. Wait, replace_file_content works on chunks.)
+        
+        # I need to use replace_file_content carefully.
+        # The tool requires TargetContent to match EXACTLY.
+        # I will replace the block from "Initialize DB" to "health()" end.
+        pass
+    except Exception as e:
+        DB_INIT_STATUS = f"Error: {e}"
+        print(f"DB Init Error: {e}") 
+
+# Actually, let's just insert the variable and update init_db/health separately or together properly.
+
 
 # Configuration
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
@@ -130,6 +155,7 @@ GOOGLE_CLIENT_ID = "232841381092-8c1brgamv08b833qbn7t8fg7cgoi3vsa.apps.googleuse
 # Global artifacts
 model = None
 encoders = {}
+DB_INIT_STATUS = "Not started"
 
 # Heuristic-based Skill Map
 ROLE_SKILLS_MAP = {
