@@ -22,6 +22,13 @@ frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'
 app = Flask(__name__, static_folder=frontend_dist, static_url_path='')
 CORS(app)
 
+@app.route("/api/health", methods=["GET"])
+def health():
+    return {
+        "status": "ok",
+        "message": "Backend is running"
+    }, 200
+
 # Configuration
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
@@ -728,6 +735,8 @@ def predict():
             elif col not in numerical_cols:
                  pass
         
+        print(f"Encoded Features (Vector) for Model:\n{features}")
+        
         # Predict
         if model:
             # Get probability for confidence
@@ -951,26 +960,47 @@ def login():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
+        # 1. Check Standard Users
         cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
         user = cursor.fetchone()
+
+        if user:
+            # Check user password
+            if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+                token = generate_token(user['id'], user['email'])
+                user_data = process_user_for_response(user)
+                conn.close()
+                return jsonify({
+                    'success': True,
+                    'message': 'Login successful',
+                    'data': user_data,
+                    'token': token
+                })
+            else:
+                conn.close()
+                return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+
+        # 2. Check Admin Users (Fallback if not in users)
+        cursor.execute("SELECT * FROM admin_users WHERE username = ?", (email,))
+        admin = cursor.fetchone()
         conn.close()
 
-        if not user:
-             return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
-        
-        # Check password
-        if not bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-            return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+        if admin:
+            # Check admin password (plaintext as per current status, or use hashing if updated)
+            if admin['password'] == password:
+                return jsonify({
+                    'success': True,
+                    'message': 'Admin Login successful',
+                    'data': {
+                        'id': admin['id'],
+                        'name': 'Administrator',
+                        'email': admin['username'],
+                        'isAdmin': True
+                    },
+                    'token': 'dummy_admin_token'
+                })
 
-        token = generate_token(user['id'], user['email'])
-        user_data = process_user_for_response(user)
-        
-        return jsonify({
-            'success': True,
-            'message': 'Login successful',
-            'data': user_data,
-            'token': token
-        })
+        return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
 
     except Exception as e:
         print(f"Login error: {e}")

@@ -29,7 +29,7 @@ export const googleLogin = async (token: string) => {
 
 /* Predict */
 export const predictJob = async (data: any) => {
-    return fetch(`${API_BASE_URL}/predict`, {
+    return fetch(`${API_BASE_URL}/api/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
