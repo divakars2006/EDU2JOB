@@ -2,50 +2,90 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 /* Register */
 export const registerUser = async (data: any) => {
-    return fetch(`${API_BASE_URL}/api/register`, {
+    const response = await fetch(`${API_BASE_URL}/api/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-    }).then(r => r.json());
+    });
+    return response.json();
 };
 
 /* Login */
 export const loginUser = async (data: any) => {
-    return fetch(`${API_BASE_URL}/api/login`, {
+    const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-    }).then(r => r.json());
+    });
+    return response.json();
 };
 
 /* Google Login */
 export const googleLogin = async (token: string) => {
-    return fetch(`${API_BASE_URL}/api/google-login`, {
+    const response = await fetch(`${API_BASE_URL}/api/google-login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
-    }).then(r => r.json());
+    });
+    return response.json();
 };
 
 /* Predict */
 export const predictJob = async (data: any) => {
-    return fetch(`${API_BASE_URL}/api/predict`, {
+    const response = await fetch(`${API_BASE_URL}/api/predict`, { // Note: Backend route in api.py seems to be /predict or /api/predict? Checking api.py...
+        // In api.py: @app.route('/predict', methods=['POST']) (Line 596)
+        // Wait, api.py has @app.route('/predict') NOT /api/predict in the file I read in step 152/156.
+        // Line 596: @app.route('/predict', methods=['POST'])
+        // BUT other routes are /api/register, /api/login.
+        // I should check if /api/predict is what it should be. 
+        // The user said "conform this" but didn't explicitly give predict code. 
+        // However, existing file used `${API_BASE_URL}/api/predict`.
+        // If backend has @app.route('/predict'), then calling /api/predict might fail unless there is a global prefix or Nginx rewrite?
+        // Let's look at api.py again. 
+        // Line 596: @app.route('/predict', methods=['POST'])
+        // Lines 138, 205: @app.route('/api/register'), @app.route('/api/login')
+        // So 'predict' is inconsistent in backend?
+        // Wait, I should probably stick to what was there (`/api/predict`) OR fix it if I see an error.
+        // But wait, the user instructions were about `loginUser` specifically matching a pattern.
+        // I recall `api.py` having `@app.route('/predict')` at line 596.
+        // PROBABLY I should use `/predict` if that's what backend has. 
+        // OR `/api/predict` if there's a blueprint? No blueprint seen.
+        // Let's assume the existing code `ApiService.ts` using `/api/predict` was *trying* to works, but maybe failed?
+        // Actually, earlier in step 193 it was `/api/predict`.
+        // Let me check `api.py` route again in step 156.
+        // 596: @app.route('/predict', methods=['POST'])
+        // 432: @app.route('/api/predict-role', methods=['POST']) (Wait, there are TWO predict routes?)
+        // Line 432 is `predict_role`. Line 596 is `predict`.
+        // `ApiService.ts` calls `predictJob`.
+        // Let's double check what `ApiService.ts` used. Step 193 line 32: `${API_BASE_URL}/api/predict`.
+        // If backend is strictly `/predict`, this is wrong.
+        // I will stick to the user's *pattern* request first (using API_BASE_URL). 
+        // I will preserve `/api/predict` for now to avoid logic changes not requested, unless I'm sure.
+        // Actually, consistency with `/api` prefix suggests `/api/predict` is desired but backend might be wrong.
+        // Checking `api.py` line 432: `@app.route('/api/predict-role')`.
+        // Maybe `predictJob` should call `/api/predict-role`?
+        // Or maybe `/predict` at 596 is the one?
+        // I will write it as is: `/api/predict` (matching previous TS) but using the new syntax. 
+        // If it fails, we debug. The user asked for `ApiService.ts` formatting, not route fixing yet.
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-    }).then(r => r.json());
+    });
+    return response.json();
 };
 
 /* Get User By ID */
 export const getUserById = async (id: string) => {
-    return fetch(`${API_BASE_URL}/api/user/${id}`).then(r => r.json());
+    const response = await fetch(`${API_BASE_URL}/api/user/${id}`);
+    return response.json();
 };
 
 /* Update User */
 export const updateUser = async (id: string, data: any) => {
-    return fetch(`${API_BASE_URL}/api/user/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/user/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-    }).then(r => r.json());
+    });
+    return response.json();
 };
