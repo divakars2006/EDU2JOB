@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import json
 import datetime
 import joblib
@@ -16,12 +15,97 @@ import time
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from db import get_db_connection
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Production Static Serving Setup
 # Requires 'npm run build' in frontend to populate dist
 frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
 app = Flask(__name__, static_folder=frontend_dist, static_url_path='')
 CORS(app)
+
+# Initialize DB
+def init_db():
+    """Initialize PostgreSQL tables if they don't exist."""
+    print("Initializing Database...")
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Admin Users
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                email TEXT
+            );
+        """)
+        
+        # Normal Users 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY, 
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                createdAt TIMESTAMP,
+                educations JSONB,
+                certifications JSONB,
+                skills JSONB,
+                placementStatus JSONB
+            );
+        """)
+        
+        # History
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS history (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT,
+                role TEXT,
+                confidence FLOAT,
+                explanation TEXT,
+                flagged INTEGER DEFAULT 0,
+                degree TEXT,
+                specialization TEXT,
+                flag_status TEXT,
+                flag_reason TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Feedback
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT,
+                prediction_id INTEGER,
+                predicted_role TEXT,
+                relevance_rating INTEGER,
+                confidence_agreement TEXT,
+                alternative_role TEXT,
+                feedback_reason JSONB,
+                comments TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT
+            );
+        """)
+        
+        # Create default admin if not exists
+        cur.execute("SELECT * FROM admin_users WHERE username = %s", ('admin',))
+        if not cur.fetchone():
+            cur.execute("INSERT INTO admin_users (username, password, email) VALUES (%s, %s, %s)", ('admin', 'admin123', 'admin@info.com'))
+            print("Default admin created.")
+
+        conn.commit()
+        conn.close()
+        print("Database initialized successfully.")
+    except Exception as e:
+        print(f"DB Init Error: {e}")
+
+# Run init
+with app.app_context():
+    init_db()
 
 @app.route("/api/health", methods=["GET"])
 def health():
@@ -32,7 +116,8 @@ def health():
 
 # Configuration
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
-DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
+# DB_PATH removed as we use get_db_connection
+DATASET_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'job_roles_dataset.tsv')
 DATASET_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'job_roles_dataset.tsv')
 TRAINING_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'train_model.py')
 PORT = 5000
@@ -98,7 +183,9 @@ def process_user_for_response(user):
         return None
     
     # Convert Row to dict if needed
-    user_dict = dict(user) if isinstance(user, sqlite3.Row) else user.copy()
+    user_dict = dict(user) if hasattr(user, 'copy') or isinstance(user, ConfigProto) else dict(user)
+    # Actually RealDictRow behaves like dict, so we can just use .copy() or dict()
+    user_dict = dict(user)
     
     # Remove password
     if 'password' in user_dict:
@@ -163,18 +250,18 @@ def admin_login():
         
         print(f"DEBUG: Admin Login Attempt: '{username}' with pass '{password}'")
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # Debug: Check if user exists at all
-        cur.execute("SELECT * FROM admin_users WHERE username = ?", (username,))
+        cur.execute("SELECT * FROM admin_users WHERE username = %s", (username,))
         found = cur.fetchone()
         if found:
              print(f"DEBUG: User found: {found}")
         else:
              print(f"DEBUG: User '{username}' NOT found in DB")
 
-        cur.execute("SELECT * FROM admin_users WHERE username = ? AND password = ?", (username, password))
+        cur.execute("SELECT * FROM admin_users WHERE username = %s AND password = %s", (username, password))
         user = cur.fetchone()
         conn.close()
         
@@ -191,7 +278,7 @@ def admin_login():
 @app.route('/api/admin/stats', methods=['GET'])
 def admin_stats():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cur = conn.cursor()
         
         # Total Predictions
@@ -249,9 +336,9 @@ def admin_stats():
 @app.route('/api/admin/predictions', methods=['GET'])
 def admin_predictions():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        conn = get_db_connection()
+        # conn.row_factory = sqlite3.Row # Not needed for psycopg2 RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # enhanced query to get feedback rating
         # Now joining strictly on ID
@@ -284,26 +371,26 @@ def admin_flag():
         new_status = data.get('status')
         new_reason = data.get('reason')
         
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cur = conn.cursor()
         
         updates = []
         params = []
         
         if new_flag_val is not None:
-            updates.append("flagged = ?")
+            updates.append("flagged = %s")
             params.append(new_flag_val)
         
         if new_status:
-            updates.append("flag_status = ?")
+            updates.append("flag_status = %s")
             params.append(new_status)
             
         if new_reason:
-            updates.append("flag_reason = ?")
+            updates.append("flag_reason = %s")
             params.append(new_reason)
             
         if updates:
-            sql = f"UPDATE history SET {', '.join(updates)} WHERE id = ?"
+            sql = f"UPDATE history SET {', '.join(updates)} WHERE id = %s"
             params.append(log_id)
             cur.execute(sql, tuple(params))
             conn.commit()
@@ -353,9 +440,8 @@ def admin_retrain():
 @app.route('/api/admin/all_feedback', methods=['GET'])
 def admin_all_feedback():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # Join with history to get confidence and original role if needed, though feedback has snapshot
         # We'll just fetch from feedback table and maybe join history for extra context if needed
@@ -375,7 +461,8 @@ def admin_all_feedback():
         for item in feedback_list:
             if item.get('feedback_reason'):
                 try:
-                    item['feedback_reason'] = json.loads(item['feedback_reason'])
+                    if isinstance(item['feedback_reason'], str):
+                         item['feedback_reason'] = json.loads(item['feedback_reason'])
                 except:
                     pass
         
@@ -393,9 +480,9 @@ def admin_feedback_status():
         if not feedback_id or not new_status:
              return jsonify({'error': 'Missing id or status'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("UPDATE feedback SET status = ? WHERE id = ?", (new_status, feedback_id))
+        cur.execute("UPDATE feedback SET status = %s WHERE id = %s", (new_status, feedback_id))
         conn.commit()
         conn.close()
         
@@ -623,13 +710,13 @@ def predict():
             prediction_id = None
             if user_id:
                 try:
-                    conn = sqlite3.connect(DB_PATH)
+                    conn = get_db_connection()
                     cur = conn.cursor()
                     cur.execute(
-                        "INSERT INTO history (user_id, role, confidence, explanation, flagged, degree, specialization) VALUES (?, ?, ?, ?, 0, ?, ?)",
+                        "INSERT INTO history (user_id, role, confidence, explanation, flagged, degree, specialization) VALUES (%s, %s, %s, %s, 0, %s, %s) RETURNING id",
                         (user_id, top_role, confidence, explanation, degree, specialization)
                     )
-                    prediction_id = cur.lastrowid
+                    prediction_id = cur.fetchone()[0]
                     conn.commit()
                     conn.close()
                 except Exception as db_err:
@@ -671,13 +758,13 @@ def submit_feedback():
         if not predicted_role or not relevance_rating:
             return jsonify({'error': 'Missing mandatory fields'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
             INSERT INTO feedback (
                 user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, 
                 alternative_role, feedback_reason, comments
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, alternative_role, feedback_reason, comments))
         
         conn.commit()
@@ -691,10 +778,9 @@ def submit_feedback():
 @app.route('/history/<user_id>', methods=['GET'])
 def get_history(user_id):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM history WHERE user_id = ? ORDER BY timestamp DESC", (user_id,))
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM history WHERE user_id = %s ORDER BY timestamp DESC", (user_id,))
         rows = cur.fetchall()
         conn.close()
         
@@ -716,11 +802,10 @@ def register():
         if not name or not email or not password:
             return jsonify({'success': False, 'message': 'Please provide all required fields'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
         if cursor.fetchone():
             conn.close()
             return jsonify({'success': False, 'message': 'Email already registered'}), 400
@@ -732,7 +817,7 @@ def register():
         # Insert New User
         cursor.execute('''
             INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
             user_id, name, email, hashed_password, created_at, 
             json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])
