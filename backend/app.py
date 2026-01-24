@@ -11,8 +11,9 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
 
-from db import get_db_connection, init_db
-from db import get_db_connection, init_db
+from db import get_db_connection
+from psycopg2.extras import RealDictCursor
+
 from encryption import encrypt, decrypt
 import joblib
 import pandas as pd
@@ -147,7 +148,7 @@ def register():
             return jsonify({'success': False, 'message': 'Please provide all required fields'}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
         if cursor.fetchone():
@@ -213,7 +214,7 @@ def login():
             return jsonify({'success': False, 'message': 'Please provide email and password'}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
         user = cursor.fetchone()
         cursor.close()
@@ -257,7 +258,7 @@ def google_login():
         sub = idinfo['sub'] # Google ID
         
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
         user = cursor.fetchone()
         
@@ -313,7 +314,7 @@ def google_login():
 def get_user(id):
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cursor.fetchone()
         cursor.close()
@@ -338,7 +339,7 @@ def update_user(id):
         data = request.get_json()
         
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cursor.fetchone()
         
@@ -495,5 +496,5 @@ def predict_role():
 
 if __name__ == '__main__':
     # Initialize DB before running
-    init_db()
+    # init_db()  <-- Removed
     app.run(port=PORT, debug=True)
