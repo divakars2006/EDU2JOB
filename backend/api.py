@@ -492,7 +492,68 @@ def admin_feedback_status():
 
 # --- End Admin Endpoints ---
 
-@app.route('/predict', methods=['POST'])
+@app.route('/api/google-login', methods=['POST'])
+def google_login():
+    try:
+        data = request.json
+        token = data.get('token')
+        
+        # Verify the token with Google
+        id_info = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
+        
+        # Get user info
+        email = id_info['email']
+        name = id_info.get('name', '')
+        google_id = id_info['sub'] # Unique Google ID
+        
+        # Check if user exists in DB
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cur.fetchone()
+        
+        if not user:
+            # Register new user automatically
+            user_id = str(int(time.time() * 1000))
+            created_at = datetime.datetime.now()
+            # Use random password for google users (they won't use it)
+            dummy_password = bcrypt.hashpw(os.urandom(16), bcrypt.gensalt()).decode('utf-8')
+            
+            cur.execute("""
+                INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (user_id, name, email, dummy_password, created_at, json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])))
+            conn.commit()
+            
+            # Fetch again
+            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+            user = cur.fetchone()
+        
+        conn.close()
+        
+        # Generate JWT
+        # Convert RealDictRow to dict if needed (it usually behaves like one)
+        token = generate_token(user['id'], user['email'])
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'token': token,
+            'user': {
+                'id': user['id'],
+                'name': user['name'],
+                'email': user['email']
+            }
+        })
+        
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid token'}), 401
+    except Exception as e:
+        print(f"Google Login Error: {e}")
+        return jsonify({'success': False, 'message': 'Login failed'}), 500
+
+@app.route('/api/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
