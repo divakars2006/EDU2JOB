@@ -495,6 +495,4 @@ def predict_role():
         return jsonify({'success': False, 'message': 'Prediction failed'}), 500
 
 if __name__ == '__main__':
-    # Initialize DB before running
-    # init_db()  <-- Removed
     app.run(port=PORT, debug=True)
