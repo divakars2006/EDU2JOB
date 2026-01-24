@@ -15,6 +15,7 @@ import jwt
 import time
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from db import get_db_connection
 
 # Production Static Serving Setup
 # Requires 'npm run build' in frontend to populate dist
@@ -757,65 +758,54 @@ def register():
         print(f"Registration error: {e}")
         return jsonify({'success': False, 'message': 'Failed to create account'}), 500
 
-@app.route('/api/login', methods=['POST'])
+@app.route("/api/login", methods=["POST"])
 def login():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get('password')
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
 
-        if not email or not password:
-            return jsonify({'success': False, 'message': 'Please provide email and password'}), 400
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    # 1. Check normal users (bcrypt)
+    cur.execute("SELECT id, password FROM users WHERE email=%s", (email,))
+    user = cur.fetchone()
+
+    if user:
+        # Check if user is dict (RealDictCursor) or tuple
+        # Step 258 said RealDictCursor was used in app.py, but get_db_connection in db.py just returns raw connection?
+        # db.py: return psycopg2.connect(...)
+        # api.py code I'm pasting implies tuple unpacking: user_id, hashed_password = user
+        # IF RealDictCursor is used, this unpacking will FAIL.
+        # Let's check db.py again. It does NOT set cursor_factory.
+        # So it returns standard tuples.
+        # User's provided code: user_id, hashed_password = user
+        # IF SELECT id, password ... returns (id, password), this works.
         
-        # 1. Check Standard Users
-        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
-        user = cursor.fetchone()
+        user_id, hashed_password = user
+        if bcrypt.checkpw(password.encode(), hashed_password.encode()):
+            return jsonify({
+                "success": True,
+                "isAdmin": False
+            })
 
-        if user:
-            # Check user password
-            if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-                token = generate_token(user['id'], user['email'])
-                user_data = process_user_for_response(user)
-                conn.close()
-                return jsonify({
-                    'success': True,
-                    'message': 'Login successful',
-                    'data': user_data,
-                    'token': token
-                })
-            else:
-                conn.close()
-                return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+    # 2. Check admin users (PLAINTEXT)
+    cur.execute("SELECT id, password FROM admin_users WHERE email=%s", (email,))
+    admin = cur.fetchone()
 
-        # 2. Check Admin Users (Fallback if not in users)
-        cursor.execute("SELECT * FROM admin_users WHERE username = ?", (email,))
-        admin = cursor.fetchone()
-        conn.close()
+    if admin:
+        admin_id, admin_password = admin
+        if password == admin_password:
+            return jsonify({
+                "success": True,
+                "isAdmin": True
+            })
 
-        if admin:
-            # Check admin password (plaintext as per current status, or use hashing if updated)
-            if admin['password'] == password:
-                return jsonify({
-                    'success': True,
-                    'message': 'Admin Login successful',
-                    'data': {
-                        'id': admin['id'],
-                        'name': 'Administrator',
-                        'email': admin['username'],
-                        'isAdmin': True
-                    },
-                    'token': 'dummy_admin_token'
-                })
+    return jsonify({
+        "success": False,
+        "message": "Invalid email or password"
+    }), 401
 
-        return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
-
-    except Exception as e:
-        print(f"Login error: {e}")
-        return jsonify({'success': False, 'message': 'Login failed'}), 500
 
 @app.route('/api/google-login', methods=['POST'])
 def google_login():
