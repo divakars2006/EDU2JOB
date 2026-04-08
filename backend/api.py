@@ -28,8 +28,8 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Configuration
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
 DB_PATH = os.path.join(os.path.dirname(__file__), 'database.db')
-DATASET_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'job_roles_dataset.tsv')
-TRAINING_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'backend_python', 'ML_model', 'train_model.py')
+DATASET_PATH = os.path.join(os.path.dirname(__file__), 'job_roles_dataset.tsv')
+TRAINING_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'ML_model', 'train_model.py')
 PORT = 5000
 GOOGLE_CLIENT_ID = "232841381092-8c1brgamv08b833qbn7t8fg7cgoi3vsa.apps.googleusercontent.com"
 
