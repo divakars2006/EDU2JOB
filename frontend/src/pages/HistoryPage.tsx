@@ -123,8 +123,9 @@ const HistoryPage = () => {
                                                 <div style={{
                                                     width: `${Number(item.confidence) * 100}%`,
                                                     height: '100%',
-                                                    background: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
+                                                    background: 'linear-gradient(90deg, #9333ea 0%, #c084fc 100%)',
                                                     borderRadius: '8px',
+                                                    boxShadow: '0 0 10px rgba(147, 51, 234, 0.4)',
                                                     transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
                                                 }} />
                                             </div>

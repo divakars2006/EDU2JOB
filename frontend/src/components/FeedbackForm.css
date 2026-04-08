@@ -70,7 +70,7 @@
 .feedback-header h3 {
     margin: 0;
     color: var(--text-color, #fff);
-    background: linear-gradient(90deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+    background: linear-gradient(90deg, #c084fc 0%, #818cf8 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -134,11 +134,11 @@
 }
 
 .rating-btn.selected {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-color: transparent;
+    background: rgba(147, 51, 234, 0.15); /* Purple tint */
+    border-color: #9333ea;
     color: white;
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0 15px rgba(147, 51, 234, 0.3);
 }
 
 .rating-labels {
@@ -188,10 +188,10 @@ textarea {
 }
 
 .submit-feedback-btn {
-    background: linear-gradient(to right, #4facfe 0%, #00f2fe 100%);
+    background: #9333ea;
     border: none;
-    padding: 0.7rem 1.5rem;
-    border-radius: 8px;
+    padding: 0.8rem 1.8rem;
+    border-radius: 9999px;
     color: white;
     font-weight: bold;
     cursor: pointer;
@@ -199,7 +199,9 @@ textarea {
 }
 
 .submit-feedback-btn:hover {
-    transform: scale(1.05);
+    transform: translateY(-2px);
+    background: #a855f7;
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
 }
 
 .success {

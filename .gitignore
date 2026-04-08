@@ -26,3 +26,9 @@ dist-ssr
 # Python
 __pycache__/
 *.pyc
+
+# Database
+*.db
+
+# Skill files
+SKILL.md

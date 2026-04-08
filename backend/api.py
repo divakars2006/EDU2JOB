@@ -986,10 +986,25 @@ def google_login():
         if not token:
              return jsonify({'success': False, 'message': 'Token is required'}), 400
              
-        idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
-        email = idinfo['email']
-        name = idinfo.get('name')
-        sub = idinfo['sub'] # Google ID
+        email, name, sub = None, None, None
+        
+        # Try fetching user profile assuming the token is an access_token
+        try:
+            import urllib.request
+            import json
+            req = urllib.request.Request("https://www.googleapis.com/oauth2/v3/userinfo")
+            req.add_header("Authorization", f"Bearer {token}")
+            with urllib.request.urlopen(req) as response:
+                idinfo = json.loads(response.read())
+            email = idinfo['email']
+            name = idinfo.get('name')
+            sub = idinfo['sub']
+        except Exception as e:
+            print(f"Token is not a valid access_token, falling back to id_token verify: {e}")
+            idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
+            email = idinfo['email']
+            name = idinfo.get('name')
+            sub = idinfo['sub'] # Google ID
         
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row

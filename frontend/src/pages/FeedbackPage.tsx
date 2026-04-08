@@ -220,7 +220,7 @@ const FeedbackPage = () => {
                                                     onChange={() => setConfidenceAgreement(option)}
                                                     style={{
                                                         marginRight: '12px',
-                                                        accentColor: '#5a8dee',
+                                                        accentColor: '#9333ea',
                                                         width: '18px',
                                                         height: '18px',
                                                         cursor: 'pointer'
@@ -246,7 +246,7 @@ const FeedbackPage = () => {
                                                     onChange={() => handleReasonChange(reason)}
                                                     style={{
                                                         marginRight: '12px',
-                                                        accentColor: '#5a8dee',
+                                                        accentColor: '#9333ea',
                                                         width: '18px',
                                                         height: '18px',
                                                         cursor: 'pointer'
@@ -293,16 +293,16 @@ const FeedbackPage = () => {
                                     <button
                                         type="submit"
                                         style={{
-                                            background: '#5a8dee',
+                                            background: '#9333ea',
                                             color: 'white',
                                             padding: '0.8rem 3rem',
                                             border: 'none',
-                                            borderRadius: '6px',
-                                            fontSize: '1.1rem',
+                                            borderRadius: '9999px',
+                                            fontSize: '1.05rem',
                                             cursor: 'pointer',
                                             fontWeight: 600,
-                                            boxShadow: '0 4px 12px rgba(90, 141, 238, 0.3)',
-                                            transition: 'transform 0.2s'
+                                            boxShadow: '0 4px 12px rgba(147, 51, 234, 0.4)',
+                                            transition: 'transform 0.2s, box-shadow 0.2s'
                                         }}
                                         onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
                                         onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}

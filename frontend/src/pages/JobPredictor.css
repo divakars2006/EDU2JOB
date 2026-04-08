@@ -1,380 +1,109 @@
-/* JobPredictor.css - Specific styles for Job Predictor Page */
+/* JobPredictor.css - Specific styles for Job Predictor Page matching landing page pure SaaS aesthetic */
 
-/* Predict Button - Custom Gradient */
+/* Predict Button */
 .predict-btn {
-  background: linear-gradient(90deg, #0cebeb 0%, #20e3b2 100%);
+  background: linear-gradient(135deg, #9333ea 0%, #6366f1 100%);
   border: none;
-  padding: 1rem 2.5rem;
-  font-size: 1.1rem;
+  padding: 1.2rem 2.8rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  border-radius: 50px;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.02em;
+  border-radius: 9999px;
   cursor: pointer;
-  color: #000;
-  transition: transform 0.2s, box-shadow 0.2s;
+  color: #fff;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 30px -5px rgba(147, 51, 234, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 250px;
 }
 
 .predict-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(32, 227, 178, 0.5);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 15px 40px -5px rgba(147, 51, 234, 0.6);
 }
 
 .predict-btn:disabled {
   opacity: 0.7;
   cursor: wait;
+  transform: none;
+  box-shadow: none;
 }
 
-/* Missing Skills Tag Variant */
+/* Missing Skills Tag */
 .skill-tag.missing {
-  background-color: #fee2e2;
-  color: #991b1b;
-  padding: 0.25rem 0.75rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444; /* Tailwind red-500 */
+  padding: 0.4rem 1rem;
   border-radius: 9999px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid #fca5a5;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
-[data-theme='dark'] .skill-tag.missing {
-  background-color: #450a0a;
-  color: #fca5a5;
-  border-color: #7f1d1d;
-}
-
-/* Custom Loader Animation */
+/* Loader Animation */
 .loader {
   position: relative;
-  width: 75px;
-  height: 100px;
+  width: 60px;
+  height: 40px;
   margin: 0 auto;
 }
 
 .loader__bar {
   position: absolute;
   bottom: 0;
-  width: 10px;
+  width: 8px;
   height: 50%;
-  background: rgb(0, 0, 0);
+  background: rgba(255, 255, 255, 0.5);
   transform-origin: center bottom;
-  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+  border-radius: 4px 4px 0 0;
 }
 
-.loader__bar:nth-child(1) {
-  left: 0px;
-  transform: scale(1, 0.2);
-  -webkit-animation: barUp1 4s infinite;
-  animation: barUp1 4s infinite;
-}
-
-.loader__bar:nth-child(2) {
-  left: 15px;
-  transform: scale(1, 0.4);
-  -webkit-animation: barUp2 4s infinite;
-  animation: barUp2 4s infinite;
-}
-
-.loader__bar:nth-child(3) {
-  left: 30px;
-  transform: scale(1, 0.6);
-  -webkit-animation: barUp3 4s infinite;
-  animation: barUp3 4s infinite;
-}
-
-.loader__bar:nth-child(4) {
-  left: 45px;
-  transform: scale(1, 0.8);
-  -webkit-animation: barUp4 4s infinite;
-  animation: barUp4 4s infinite;
-}
-
-.loader__bar:nth-child(5) {
-  left: 60px;
-  transform: scale(1, 1);
-  -webkit-animation: barUp5 4s infinite;
-  animation: barUp5 4s infinite;
-}
+.loader__bar:nth-child(1) { left: 0px; transform: scale(1, 0.2); animation: barUp1 4s infinite; }
+.loader__bar:nth-child(2) { left: 12px; transform: scale(1, 0.4); animation: barUp2 4s infinite; }
+.loader__bar:nth-child(3) { left: 24px; transform: scale(1, 0.6); animation: barUp3 4s infinite; }
+.loader__bar:nth-child(4) { left: 36px; transform: scale(1, 0.8); animation: barUp4 4s infinite; }
+.loader__bar:nth-child(5) { left: 48px; transform: scale(1, 1); animation: barUp5 4s infinite; }
 
 .loader__ball {
   position: absolute;
   bottom: 10px;
-  left: 0;
+  left: -2px;
   width: 10px;
   height: 10px;
-  background: rgb(44, 143, 255);
+  background: #ffffff;
   border-radius: 50%;
-  -webkit-animation: ball624 4s infinite;
   animation: ball624 4s infinite;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
 @keyframes ball624 {
-  0% {
-    transform: translate(0, 0);
-  }
-
-  5% {
-    transform: translate(8px, -14px);
-  }
-
-  10% {
-    transform: translate(15px, -10px);
-  }
-
-  17% {
-    transform: translate(23px, -24px);
-  }
-
-  20% {
-    transform: translate(30px, -20px);
-  }
-
-  27% {
-    transform: translate(38px, -34px);
-  }
-
-  30% {
-    transform: translate(45px, -30px);
-  }
-
-  37% {
-    transform: translate(53px, -44px);
-  }
-
-  40% {
-    transform: translate(60px, -40px);
-  }
-
-  50% {
-    transform: translate(60px, 0);
-  }
-
-  57% {
-    transform: translate(53px, -14px);
-  }
-
-  60% {
-    transform: translate(45px, -10px);
-  }
-
-  67% {
-    transform: translate(37px, -24px);
-  }
-
-  70% {
-    transform: translate(30px, -20px);
-  }
-
-  77% {
-    transform: translate(22px, -34px);
-  }
-
-  80% {
-    transform: translate(15px, -30px);
-  }
-
-  87% {
-    transform: translate(7px, -44px);
-  }
-
-  90% {
-    transform: translate(0, -40px);
-  }
-
-  100% {
-    transform: translate(0, 0);
-  }
+  0% { transform: translate(0, 0); }
+  5% { transform: translate(6px, -10px); }
+  10% { transform: translate(12px, -8px); }
+  17% { transform: translate(18px, -16px); }
+  20% { transform: translate(24px, -14px); }
+  27% { transform: translate(30px, -22px); }
+  30% { transform: translate(36px, -20px); }
+  37% { transform: translate(42px, -28px); }
+  40% { transform: translate(48px, -26px); }
+  50% { transform: translate(48px, 0); }
+  57% { transform: translate(42px, -10px); }
+  60% { transform: translate(36px, -8px); }
+  67% { transform: translate(30px, -16px); }
+  70% { transform: translate(24px, -14px); }
+  77% { transform: translate(18px, -22px); }
+  80% { transform: translate(12px, -20px); }
+  87% { transform: translate(6px, -28px); }
+  90% { transform: translate(0, -26px); }
+  100% { transform: translate(0, 0); }
 }
 
-@-webkit-keyframes barUp1 {
-  0% {
-    transform: scale(1, 0.2);
-  }
-
-  40% {
-    transform: scale(1, 0.2);
-  }
-
-  50% {
-    transform: scale(1, 1);
-  }
-
-  90% {
-    transform: scale(1, 1);
-  }
-
-  100% {
-    transform: scale(1, 0.2);
-  }
-}
-
-@keyframes barUp1 {
-  0% {
-    transform: scale(1, 0.2);
-  }
-
-  40% {
-    transform: scale(1, 0.2);
-  }
-
-  50% {
-    transform: scale(1, 1);
-  }
-
-  90% {
-    transform: scale(1, 1);
-  }
-
-  100% {
-    transform: scale(1, 0.2);
-  }
-}
-
-@-webkit-keyframes barUp2 {
-  0% {
-    transform: scale(1, 0.4);
-  }
-
-  40% {
-    transform: scale(1, 0.4);
-  }
-
-  50% {
-    transform: scale(1, 0.8);
-  }
-
-  90% {
-    transform: scale(1, 0.8);
-  }
-
-  100% {
-    transform: scale(1, 0.4);
-  }
-}
-
-@keyframes barUp2 {
-  0% {
-    transform: scale(1, 0.4);
-  }
-
-  40% {
-    transform: scale(1, 0.4);
-  }
-
-  50% {
-    transform: scale(1, 0.8);
-  }
-
-  90% {
-    transform: scale(1, 0.8);
-  }
-
-  100% {
-    transform: scale(1, 0.4);
-  }
-}
-
-@-webkit-keyframes barUp3 {
-  0% {
-    transform: scale(1, 0.6);
-  }
-
-  100% {
-    transform: scale(1, 0.6);
-  }
-}
-
-@keyframes barUp3 {
-  0% {
-    transform: scale(1, 0.6);
-  }
-
-  100% {
-    transform: scale(1, 0.6);
-  }
-}
-
-@-webkit-keyframes barUp4 {
-  0% {
-    transform: scale(1, 0.8);
-  }
-
-  40% {
-    transform: scale(1, 0.8);
-  }
-
-  50% {
-    transform: scale(1, 0.4);
-  }
-
-  90% {
-    transform: scale(1, 0.4);
-  }
-
-  100% {
-    transform: scale(1, 0.8);
-  }
-}
-
-@keyframes barUp4 {
-  0% {
-    transform: scale(1, 0.8);
-  }
-
-  40% {
-    transform: scale(1, 0.8);
-  }
-
-  50% {
-    transform: scale(1, 0.4);
-  }
-
-  90% {
-    transform: scale(1, 0.4);
-  }
-
-  100% {
-    transform: scale(1, 0.8);
-  }
-}
-
-@-webkit-keyframes barUp5 {
-  0% {
-    transform: scale(1, 1);
-  }
-
-  40% {
-    transform: scale(1, 1);
-  }
-
-  50% {
-    transform: scale(1, 0.2);
-  }
-
-  90% {
-    transform: scale(1, 0.2);
-  }
-
-  100% {
-    transform: scale(1, 1);
-  }
-}
-
-@keyframes barUp5 {
-  0% {
-    transform: scale(1, 1);
-  }
-
-  40% {
-    transform: scale(1, 1);
-  }
-
-  50% {
-    transform: scale(1, 0.2);
-  }
-
-  90% {
-    transform: scale(1, 0.2);
-  }
-
-  100% {
-    transform: scale(1, 1);
-  }
-}
+@keyframes barUp1 { 0%, 40% { transform: scale(1, 0.2); } 50%, 90% { transform: scale(1, 1); background: #9333ea; } 100% { transform: scale(1, 0.2); } }
+@keyframes barUp2 { 0%, 40% { transform: scale(1, 0.4); } 50%, 90% { transform: scale(1, 0.8); background: #a855f7; } 100% { transform: scale(1, 0.4); } }
+@keyframes barUp3 { 0%, 100% { transform: scale(1, 0.6); } 50%, 90% { background: #6366f1; }}
+@keyframes barUp4 { 0%, 40% { transform: scale(1, 0.8); } 50%, 90% { transform: scale(1, 0.4); background: #9333ea; } 100% { transform: scale(1, 0.8); } }
+@keyframes barUp5 { 0%, 40% { transform: scale(1, 1); } 50%, 90% { transform: scale(1, 0.2); background: #a855f7; } 100% { transform: scale(1, 1); } }

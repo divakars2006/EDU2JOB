@@ -138,7 +138,7 @@ const JobPredictor = () => {
                         /* Initial State - Welcome Card Style */
                         <div className="welcome-card" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center', maxWidth: '800px', margin: '0 auto' }}>
                             <div className="welcome-content" style={{ width: '100%' }}>
-                                <h1 className="welcome-title" style={{ background: 'linear-gradient(90deg, #00f260 0%, #0575e6 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', marginBottom: '1rem' }}>
+                                <h1 className="welcome-title">
                                     Career Path Prediction Engine
                                 </h1>
                                 <p className="welcome-subtitle">

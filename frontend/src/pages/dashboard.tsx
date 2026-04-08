@@ -6,6 +6,7 @@ import { getUserById } from '../services/ApiService';
 const Dashboard = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [user, setUser] = useState<any>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     // Get theme from localStorage
@@ -65,28 +66,38 @@ const Dashboard = () => {
 
   return (
     <div className={`dashboard-page ${theme}-theme`}>
-      {/* Top Header */}
+      {/* Top Navbar */}
       <header className="dashboard-header">
-        <div className="header-left">
-          <div className="logo-container">
-            <span className="logo-icon">🎓</span>
-            <h1 className="logo-text">Job Predicting</h1>
-          </div>
+        {/* Logo – Left */}
+        <div className="logo-container">
+          <span className="logo-icon">🎓</span>
+          <span className="logo-text">Job Predicting</span>
         </div>
-        <nav className="header-nav">
-          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/dashboard'); }} className="active">Dashboard</a>
-          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/profile'); }}>My Profile</a>
-          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/job-predictor'); }}>Job Predictor</a>
-          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/history'); }}>History</a>
-          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/feedback'); }}>Feedback</a>
+
+        {/* Nav Links – Center */}
+        <nav className={`header-nav${menuOpen ? ' nav-open' : ''}`} aria-label="Main navigation">
+          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/dashboard'); setMenuOpen(false); }} className="active">Dashboard</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/profile'); setMenuOpen(false); }}>My Profile</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/job-predictor'); setMenuOpen(false); }}>Job Predictor</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/history'); setMenuOpen(false); }}>History</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); handleNavigation('/feedback'); setMenuOpen(false); }}>Feedback</a>
         </nav>
+
+        {/* Right – Avatar + Hamburger */}
         <div className="header-right">
-          <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
-          <div className="user-avatar">
+          <div className="user-avatar" title={user?.email || 'User'}>
             {user?.email ? user.email.charAt(0).toUpperCase() : 'U'}
           </div>
+          <button
+            className="hamburger-btn"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Toggle navigation menu"
+            aria-expanded={menuOpen}
+          >
+            <span className={`hamburger-line${menuOpen ? ' open' : ''}`}></span>
+            <span className={`hamburger-line${menuOpen ? ' open' : ''}`}></span>
+            <span className={`hamburger-line${menuOpen ? ' open' : ''}`}></span>
+          </button>
         </div>
       </header>
 
