@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import json
 import datetime
 import joblib
@@ -32,6 +34,25 @@ DATASET_PATH = os.path.join(os.path.dirname(__file__), 'job_roles_dataset.tsv')
 TRAINING_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'ML_model', 'train_model.py')
 PORT = 5000
 GOOGLE_CLIENT_ID = "232841381092-8c1brgamv08b833qbn7t8fg7cgoi3vsa.apps.googleusercontent.com"
+DATABASE_URL = os.getenv('DATABASE_URL') # For production PostgreSQL
+
+def get_db_connection():
+    if DATABASE_URL:
+        # PostgreSQL
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        # SQLite local
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def get_db_cursor(conn):
+    if DATABASE_URL:
+        # Return a cursor that acts like a dict (similar to sqlite3.Row)
+        return conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        return conn.cursor()
 
 # Global artifacts
 model = None
@@ -93,7 +114,7 @@ def process_user_for_response(user):
         return None
     
     # Convert Row to dict if needed
-    user_dict = dict(user) if isinstance(user, sqlite3.Row) else user.copy()
+    user_dict = dict(user) if not isinstance(user, dict) else user.copy()
     
     # Remove password
     if 'password' in user_dict:
@@ -115,76 +136,50 @@ def process_user_for_response(user):
     return user_dict
 
 def init_db():
-    """Initialize the SQLite database for prediction history and admin users."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cursor = get_db_cursor(conn)
     
-    # History Table
-    cursor.execute('''
+    # SQLite Specific logic for migration check
+    columns = []
+    if not DATABASE_URL:
+        cursor.execute("PRAGMA table_info(history)")
+        columns = [info[1] for info in cursor.fetchall()]
+    else:
+        # Postgres column check mapping would go here if needed
+        pass
+
+    # History Table (Postgres uses SERIAL instead of AUTOINCREMENT)
+    id_type = "SERIAL" if DATABASE_URL else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             user_id TEXT NOT NULL,
             role TEXT NOT NULL,
             confidence REAL,
             explanation TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            flagged INTEGER DEFAULT 0
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            flagged INTEGER DEFAULT 0,
+            degree TEXT,
+            specialization TEXT,
+            flag_status TEXT DEFAULT 'Pending',
+            flag_reason TEXT,
+            PRIMARY KEY (id)
         )
     ''')
     
-    # Check if flagged column exists (for migration)
-    cursor.execute("PRAGMA table_info(history)")
-    columns = [info[1] for info in cursor.fetchall()]
-    if 'flagged' not in columns:
-        print("Migrating DB: Adding 'flagged' column to history table...")
-        try:
+    if not DATABASE_URL:
+        # SQLite Migrations (Incremental)
+        if 'flagged' not in columns:
             cursor.execute("ALTER TABLE history ADD COLUMN flagged INTEGER DEFAULT 0")
-        except sqlite3.OperationalError as e:
-            print(f"Migration warning: {e}")
-
-    # Check for new columns: degree and specialization
-    if 'degree' not in columns:
-        print("Migrating DB: Adding 'degree' column to history table...")
-        try:
-             cursor.execute("ALTER TABLE history ADD COLUMN degree TEXT")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
-    if 'specialization' not in columns:
-        print("Migrating DB: Adding 'specialization' column to history table...")
-        try:
-             cursor.execute("ALTER TABLE history ADD COLUMN specialization TEXT")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
-    if 'flag_status' not in columns:
-        print("Migrating DB: Adding 'flag_status' column to history table...")
-        try:
-             cursor.execute("ALTER TABLE history ADD COLUMN flag_status TEXT DEFAULT 'Pending'")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
-    if 'flag_reason' not in columns:
-        print("Migrating DB: Adding 'flag_reason' column to history table...")
-        try:
-             cursor.execute("ALTER TABLE history ADD COLUMN flag_reason TEXT")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
-    if 'flag_status' not in columns:
-        print("Migrating DB: Adding 'flag_status' column to history table...")
-        try:
-             cursor.execute("ALTER TABLE history ADD COLUMN flag_status TEXT DEFAULT 'Pending'")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
-    if 'flag_reason' not in columns:
-        print("Migrating DB: Adding 'flag_reason' column to history table...")
-        try:
-             cursor.execute("ALTER TABLE history ADD COLUMN flag_reason TEXT")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
+        if 'degree' not in columns:
+            cursor.execute("ALTER TABLE history ADD COLUMN degree TEXT")
+        if 'specialization' not in columns:
+            cursor.execute("ALTER TABLE history ADD COLUMN specialization TEXT")
+        if 'flag_status' not in columns:
+            cursor.execute("ALTER TABLE history ADD COLUMN flag_status TEXT DEFAULT 'Pending'")
+        if 'flag_reason' not in columns:
+            cursor.execute("ALTER TABLE history ADD COLUMN flag_reason TEXT")
     # Users Table (Standard + Google Auth)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -202,74 +197,34 @@ def init_db():
     ''')
 
     # Admin Users Table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS admin_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
-        )
-    ''')
-    
-    # ... (Seeding logic remains same, skipping for brevity in replacement chunk context compatibility if needed, but here I should keep context) ...
-    # Wait, replace_file_content replaces the whole block. I need to keep the seeding logic.
-    # The previous view_file showed I can anchor on 'if 'specialization' not in columns:' and end before 'Admin Users Table creation'
-    # Actually, I'll target the DB init section more precisely.
-
-    # Let's just do the whole init_db modification in one chunk if possible, or split.
-    # I'll retarget to just insert the new column checks before Admin Users Table.
-
-    # ... (Previous code)
-    
     # Admin Users Table
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS admin_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            PRIMARY KEY (id)
         )
     ''')
     
-    # ...
-    
-    # RE-TARGETING for `admin_predictions` and `admin_flag` below.
-    # I will do this in the next tool call if the file is too big or blocks differ too much.
-    # `api.py` is fairly large. I should probably use multi_replace for safety.
+    # Helper for placeholders
+    def q(query):
+        return query.replace('?', '%s') if DATABASE_URL else query
 
-    # Switching to multi-replace in next turn or careful chunking here.
-    # I'll try to just do the init_db part here.
-    
-    # actually I will cancel this and use multi_replace_file_content.
-
-    
     # Seed default admin
-    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('admin',))
+    cursor.execute(q("SELECT * FROM admin_users WHERE username = ?"), ('admin',))
     if not cursor.fetchone():
-        print("Seeding default admin user...")
-        # In a real app, hash password!
-        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('admin', 'admin123'))
+        cursor.execute(q("INSERT INTO admin_users (username, password) VALUES (?, ?)"), ('admin', 'admin123'))
 
-    # Seed requested admin (Exact match as requested)
-    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('Adimn@info.com',))
+    # Seed requested admin
+    cursor.execute(q("SELECT * FROM admin_users WHERE username = ?"), ('Admin@info.com',))
     if not cursor.fetchone():
-        print("Seeding requested admin user...")
-        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('Adimn@info.com', '654321'))
-
-    # Seed corrected spelling (Admin@info.com) just in case
-    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('Admin@info.com',))
-    if not cursor.fetchone():
-        print("Seeding corrected admin user...")
-        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('Admin@info.com', '654321'))
-
-    # Seed lowercase version (admin@info.com) for usability
-    cursor.execute("SELECT * FROM admin_users WHERE username = ?", ('admin@info.com',))
-    if not cursor.fetchone():
-        print("Seeding lowercase admin user...")
-        cursor.execute("INSERT INTO admin_users (username, password) VALUES (?, ?)", ('admin@info.com', '654321'))
+        cursor.execute(q("INSERT INTO admin_users (username, password) VALUES (?, ?)"), ('Admin@info.com', '654321'))
 
     # Feedback Table (New)
-    cursor.execute('''
+    cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             user_id TEXT,
             prediction_id INTEGER,
             predicted_role TEXT NOT NULL,
@@ -278,27 +233,19 @@ def init_db():
             alternative_role TEXT,
             feedback_reason TEXT,
             comments TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            status TEXT DEFAULT 'Pending',
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id)
         )
     ''')
     
-    # Check if prediction_id column exists (for migration)
-    cursor.execute("PRAGMA table_info(feedback)")
-    f_columns = [info[1] for info in cursor.fetchall()]
-    if 'prediction_id' not in f_columns:
-         print("Migrating DB: Adding 'prediction_id' column to feedback table...")
-         try:
+    if not DATABASE_URL:
+        cursor.execute("PRAGMA table_info(feedback)")
+        f_columns = [info[1] for info in cursor.fetchall()]
+        if 'prediction_id' not in f_columns:
              cursor.execute("ALTER TABLE feedback ADD COLUMN prediction_id INTEGER")
-         except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
-    if 'status' not in f_columns:
-        print("Migrating DB: Adding 'status' column to feedback table...")
-        try:
+        if 'status' not in f_columns:
              cursor.execute("ALTER TABLE feedback ADD COLUMN status TEXT DEFAULT 'Pending'")
-        except sqlite3.OperationalError as e:
-             print(f"Migration warning: {e}")
-
     conn.commit()
     conn.close()
     print(f"Database initialized at {DB_PATH}")
@@ -347,18 +294,22 @@ def admin_login():
         
         print(f"DEBUG: Admin Login Attempt: '{username}' with pass '{password}'")
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
+        conn = get_db_connection()
+        cur = get_db_cursor(conn)
         
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+
         # Debug: Check if user exists at all
-        cur.execute("SELECT * FROM admin_users WHERE username = ?", (username,))
+        cur.execute(q("SELECT * FROM admin_users WHERE username = ?"), (username,))
         found = cur.fetchone()
         if found:
              print(f"DEBUG: User found: {found}")
         else:
              print(f"DEBUG: User '{username}' NOT found in DB")
 
-        cur.execute("SELECT * FROM admin_users WHERE username = ? AND password = ?", (username, password))
+        cur.execute(q("SELECT * FROM admin_users WHERE username = ? AND password = ?"), (username, password))
         user = cur.fetchone()
         conn.close()
         
@@ -375,24 +326,29 @@ def admin_login():
 @app.route('/api/admin/stats', methods=['GET'])
 def admin_stats():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
+        conn = get_db_connection()
+        cur = get_db_cursor(conn)
+        
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
         
         # Total Predictions
         cur.execute("SELECT COUNT(*) FROM history")
-        total_predictions = cur.fetchone()[0]
+        total_predictions = cur.fetchone()[0] if not DATABASE_URL else cur.fetchone()['count']
         
         # Flagged Predictions
-        cur.execute("SELECT COUNT(*) FROM history WHERE flagged = 1")
-        total_flagged = cur.fetchone()[0]
+        cur.execute(q("SELECT COUNT(*) FROM history WHERE flagged = ?"), (1,))
+        total_flagged = cur.fetchone()[0] if not DATABASE_URL else cur.fetchone()['count']
         
         # Unique Users (approximate based on user_id)
         cur.execute("SELECT COUNT(DISTINCT user_id) FROM history")
-        total_users = cur.fetchone()[0]
+        total_users = cur.fetchone()[0] if not DATABASE_URL else cur.fetchone()['count']
         
         # Role Distribution
         cur.execute("SELECT role, COUNT(*) as count FROM history GROUP BY role ORDER BY count DESC LIMIT 5")
-        role_dist = [{'role': row[0], 'count': row[1]} for row in cur.fetchall()]
+        rows = cur.fetchall()
+        role_dist = [{'role': row['role'], 'count': row['count']} for row in rows] if DATABASE_URL else [{'role': row[0], 'count': row[1]} for row in rows]
         
         conn.close()
         
@@ -433,9 +389,8 @@ def admin_stats():
 @app.route('/api/admin/predictions', methods=['GET'])
 def admin_predictions():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        conn = get_db_connection()
+        cur = get_db_cursor(conn)
         
         # enhanced query to get feedback rating
         # Now joining strictly on ID
@@ -489,7 +444,7 @@ def admin_flag():
         if updates:
             sql = f"UPDATE history SET {', '.join(updates)} WHERE id = ?"
             params.append(log_id)
-            cur.execute(sql, tuple(params))
+            cur.execute(q(sql), tuple(params))
             conn.commit()
         
         conn.close()
@@ -577,9 +532,14 @@ def admin_feedback_status():
         if not feedback_id or not new_status:
              return jsonify({'error': 'Missing id or status'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute("UPDATE feedback SET status = ? WHERE id = ?", (new_status, feedback_id))
+        conn = get_db_connection()
+        cur = get_db_cursor(conn)
+        
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+            
+        cur.execute(q("UPDATE feedback SET status = ? WHERE id = ?"), (new_status, feedback_id))
         conn.commit()
         conn.close()
         
@@ -805,13 +765,21 @@ def predict():
             prediction_id = None
             if user_id:
                 try:
-                    conn = sqlite3.connect(DB_PATH)
-                    cur = conn.cursor()
+                    conn = get_db_connection()
+                    cur = get_db_cursor(conn)
+                    
+                    # Helper for placeholders
+                    def q(query):
+                        return query.replace('?', '%s') if DATABASE_URL else query
+
                     cur.execute(
-                        "INSERT INTO history (user_id, role, confidence, explanation, flagged, degree, specialization) VALUES (?, ?, ?, ?, 0, ?, ?)",
+                        q("INSERT INTO history (user_id, role, confidence, explanation, flagged, degree, specialization) VALUES (?, ?, ?, ?, 0, ?, ?)"),
                         (user_id, top_role, confidence, explanation, degree, specialization)
                     )
-                    prediction_id = cur.lastrowid
+                    prediction_id = cur.lastrowid if not DATABASE_URL else None # Postgres needs different way for lastrowid, but we use history id in feedback
+                    if DATABASE_URL:
+                         cur.execute("SELECT LASTVAL()")
+                         prediction_id = cur.fetchone()['lastval']
                     conn.commit()
                     conn.close()
                 except Exception as db_err:
@@ -853,14 +821,19 @@ def submit_feedback():
         if not predicted_role or not relevance_rating:
             return jsonify({'error': 'Missing mandatory fields'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute('''
+        conn = get_db_connection()
+        cur = get_db_cursor(conn)
+        
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+
+        cur.execute(q('''
             INSERT INTO feedback (
                 user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, 
                 alternative_role, feedback_reason, comments
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, alternative_role, feedback_reason, comments))
+        '''), (user_id, prediction_id, predicted_role, relevance_rating, confidence_agreement, alternative_role, feedback_reason, comments))
         
         conn.commit()
         conn.close()
@@ -873,10 +846,14 @@ def submit_feedback():
 @app.route('/history/<user_id>', methods=['GET'])
 def get_history(user_id):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM history WHERE user_id = ? ORDER BY timestamp DESC", (user_id,))
+        conn = get_db_connection()
+        cur = get_db_cursor(conn)
+        
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+
+        cur.execute(q("SELECT * FROM history WHERE user_id = ? ORDER BY timestamp DESC"), (user_id,))
         rows = cur.fetchall()
         conn.close()
         
@@ -898,11 +875,14 @@ def register():
         if not name or not email or not password:
             return jsonify({'success': False, 'message': 'Please provide all required fields'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
         
-        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+        
+        cursor.execute(q("SELECT name FROM users WHERE email = ?"), (email,))
         if cursor.fetchone():
             conn.close()
             return jsonify({'success': False, 'message': 'Email already registered'}), 400
@@ -912,10 +892,10 @@ def register():
         created_at = datetime.datetime.now()
         
         # Insert New User
-        cursor.execute('''
+        cursor.execute(q('''
             INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
+        '''), (
             user_id, name, email, hashed_password, created_at, 
             json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])
         ))
@@ -950,11 +930,14 @@ def login():
         if not email or not password:
             return jsonify({'success': False, 'message': 'Please provide email and password'}), 400
 
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
         
-        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+        
+        cursor.execute(q("SELECT * FROM users WHERE email = ?"), (email,))
         user = cursor.fetchone()
         conn.close()
 
@@ -1009,11 +992,14 @@ def google_login():
             name = idinfo.get('name')
             sub = idinfo['sub'] # Google ID
         
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
         
-        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+        
+        cursor.execute(q("SELECT * FROM users WHERE email = ?"), (email,))
         user = cursor.fetchone()
         
         if not user:
@@ -1022,10 +1008,10 @@ def google_login():
             created_at = datetime.datetime.now()
             
             # Insert
-            cursor.execute('''
+            cursor.execute(q('''
                 INSERT INTO users (id, name, email, password, googleId, createdAt, educations, certifications, skills, placementStatus) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
+            '''), (
                 user_id, name, email, '', sub, created_at,
                 json.dumps([]), json.dumps([]), json.dumps([]), json.dumps([])
             ))
@@ -1037,10 +1023,10 @@ def google_login():
         else:
             # Update googleId if missing
             if not user['googleId']:
-                cursor.execute("UPDATE users SET googleId = ? WHERE id = ?", (sub, user['id']))
+                cursor.execute(q("UPDATE users SET googleId = ? WHERE id = ?"), (sub, user['id']))
                 conn.commit()
                 # Fetch updated
-                cursor.execute("SELECT * FROM users WHERE id = ?", (user['id'],))
+                cursor.execute(q("SELECT * FROM users WHERE id = ?"), (user['id'],))
                 user = cursor.fetchone()
 
         conn.close()
@@ -1068,11 +1054,14 @@ def google_login():
 @app.route('/api/user/<string:id>', methods=['GET'])
 def get_user(id):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
         
-        cursor.execute("SELECT * FROM users WHERE id = ?", (id,))
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+        
+        cursor.execute(q("SELECT * FROM users WHERE id = ?"), (id,))
         user = cursor.fetchone()
         conn.close()
 
@@ -1094,11 +1083,14 @@ def update_user(id):
     try:
         data = request.get_json()
         
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
         
-        cursor.execute("SELECT * FROM users WHERE id = ?", (id,))
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+        
+        cursor.execute(q("SELECT * FROM users WHERE id = ?"), (id,))
         user = cursor.fetchone()
         
         if not user:
@@ -1143,11 +1135,11 @@ def update_user(id):
         if query_parts:
             sql = f"UPDATE users SET {', '.join(query_parts)} WHERE id = ?"
             params.append(id)
-            cursor.execute(sql, tuple(params))
+            cursor.execute(q(sql), tuple(params))
             conn.commit()
             
         # Fetch updated user
-        cursor.execute("SELECT * FROM users WHERE id = ?", (id,))
+        cursor.execute(q("SELECT * FROM users WHERE id = ?"), (id,))
         updated_user = cursor.fetchone()
         conn.close()
         
@@ -1165,9 +1157,14 @@ def update_user(id):
 @app.route('/api/user/<string:id>', methods=['DELETE'])
 def delete_user(id):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM users WHERE id = ?", (id,))
+        conn = get_db_connection()
+        cursor = get_db_cursor(conn)
+        
+        # Helper for placeholders
+        def q(query):
+            return query.replace('?', '%s') if DATABASE_URL else query
+            
+        cursor.execute(q("DELETE FROM users WHERE id = ?"), (id,))
         rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
