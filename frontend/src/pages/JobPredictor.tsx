@@ -4,6 +4,8 @@ import './dashboard.css'; // Import dashboard styles for header/theme
 import MatchScoreChart from '../components/MatchScoreChart';
 import FeedbackForm from '../components/FeedbackForm';
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const JobPredictor = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
     const [user, setUser] = useState<any>(null);
@@ -75,7 +77,7 @@ const JobPredictor = () => {
             };
 
             const minLoadingTime = new Promise(resolve => setTimeout(resolve, 1500));
-            const request = fetch('http://localhost:5000/predict', {
+            const request = fetch(`${BASE_URL}/predict`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)

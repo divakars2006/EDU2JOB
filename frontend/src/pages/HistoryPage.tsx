@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import './dashboard.css'; // Reuse dashboard styles for header
 import './JobPredictor.css'; // Reuse container styles or create new if needed
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const HistoryPage = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
     const [user, setUser] = useState<any>(null);
@@ -48,7 +50,7 @@ const HistoryPage = () => {
     const fetchHistory = async (userId: string) => {
         setLoading(true);
         try {
-            const response = await fetch(`http://localhost:5000/history/${userId}`);
+            const response = await fetch(`${BASE_URL}/history/${userId}`);
             const data = await response.json();
             if (Array.isArray(data)) {
                 setHistory(data);
