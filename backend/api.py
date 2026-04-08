@@ -17,10 +17,13 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
 # Production Static Serving Setup
-# Requires 'npm run build' in frontend to populate dist
 frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+# Ensure the folder exists to avoid startup crashes, though Render deployment might not have it
+if not os.path.exists(frontend_dist):
+    os.makedirs(frontend_dist, exist_ok=True)
+
 app = Flask(__name__, static_folder=frontend_dist, static_url_path='')
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Configuration
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'model')
@@ -1193,9 +1196,10 @@ def serve(path):
         else:
             return "Frontend not built. Run 'npm run build' in frontend directory.", 404
 
+# Initialize DB and Load Artifacts globally so Gunicorn executes them
+init_db()
+load_artifacts()
+
 if __name__ == '__main__':
-    # Initialize DB on start
-    init_db()
-    load_artifacts()
     print(f"Server starting on http://localhost:{PORT}")
     app.run(debug=True, port=PORT, host='0.0.0.0')
