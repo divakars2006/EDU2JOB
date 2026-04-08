@@ -4,7 +4,7 @@ import './dashboard.css'; // Import dashboard styles for header/theme
 import MatchScoreChart from '../components/MatchScoreChart';
 import FeedbackForm from '../components/FeedbackForm';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, "");
 
 const JobPredictor = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');

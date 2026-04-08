@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import './dashboard.css'; // Reuse dashboard styles
 import { useAuth } from '../authentication/AuthContext';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, "");
 
 const FeedbackPage = () => {
     const { user } = useAuth();
