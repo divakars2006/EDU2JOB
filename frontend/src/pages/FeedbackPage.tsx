@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import './dashboard.css'; // Reuse dashboard styles
 import { useAuth } from '../authentication/AuthContext';
 
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const FeedbackPage = () => {
     const { user } = useAuth();
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -81,7 +83,7 @@ const FeedbackPage = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:5000/feedback', {
+            const response = await fetch(`${BASE_URL}/feedback`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
