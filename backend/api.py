@@ -552,7 +552,7 @@ def admin_feedback_status():
 
 # --- End Admin Endpoints ---
 
-@app.route('/predict', methods=['POST'])
+@app.route('/api/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
@@ -806,7 +806,7 @@ def predict():
         print(f"Prediction error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/feedback', methods=['POST'])
+@app.route('/api/feedback', methods=['POST'])
 def submit_feedback():
     try:
         data = request.get_json()

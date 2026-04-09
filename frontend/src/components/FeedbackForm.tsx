@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import './FeedbackForm.css';
 
 const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, "");
+const API_URL = `${BASE_URL}/api`;
 
 interface FeedbackFormProps {
     predictedRole: string;
@@ -51,7 +52,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ predictedRole, userId, pred
         }
 
         try {
-            const response = await fetch(`${BASE_URL}/feedback`, {
+            const response = await fetch(`${API_URL}/feedback`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

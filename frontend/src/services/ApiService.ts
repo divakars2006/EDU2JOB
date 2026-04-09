@@ -31,8 +31,9 @@ interface ApiResponse {
     token?: string;
 }
 
-const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, "");
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, "");
+const BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, "");
+const API_URL = BASE_URL ? `${BASE_URL}/api` : '/api';
+const API_BASE_URL = API_URL;
 
 /**
  * Register a new user

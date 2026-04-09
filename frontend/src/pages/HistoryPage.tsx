@@ -3,6 +3,7 @@ import './dashboard.css'; // Reuse dashboard styles for header
 import './JobPredictor.css'; // Reuse container styles or create new if needed
 
 const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, "");
+const API_URL = `${BASE_URL}/api`;
 
 const HistoryPage = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -50,7 +51,7 @@ const HistoryPage = () => {
     const fetchHistory = async (userId: string) => {
         setLoading(true);
         try {
-            const response = await fetch(`${BASE_URL}/history/${userId}`);
+            const response = await fetch(`${API_URL}/history/${userId}`);
             const data = await response.json();
             if (Array.isArray(data)) {
                 setHistory(data);

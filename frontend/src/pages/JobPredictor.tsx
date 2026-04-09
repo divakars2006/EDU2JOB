@@ -5,6 +5,7 @@ import MatchScoreChart from '../components/MatchScoreChart';
 import FeedbackForm from '../components/FeedbackForm';
 
 const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, "");
+const API_URL = `${BASE_URL}/api`;
 
 const JobPredictor = () => {
     const [theme, setTheme] = useState<'light' | 'dark'>('dark');
@@ -77,7 +78,7 @@ const JobPredictor = () => {
             };
 
             const minLoadingTime = new Promise(resolve => setTimeout(resolve, 1500));
-            const request = fetch(`${BASE_URL}/predict`, {
+            const request = fetch(`${API_URL}/predict`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
