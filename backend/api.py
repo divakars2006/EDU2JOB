@@ -896,7 +896,7 @@ def register():
         
         # Insert New User
         cursor.execute(q('''
-            INSERT INTO users (id, name, email, password, createdAt, educations, certifications, skills, placementStatus) 
+            INSERT INTO users (id, name, email, password, created_at, educations, certifications, skills, placement_status) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''), (
             user_id, name, email, hashed_password, created_at, 
@@ -1012,7 +1012,7 @@ def google_login():
             
             # Insert
             cursor.execute(q('''
-                INSERT INTO users (id, name, email, password, googleId, createdAt, educations, certifications, skills, placementStatus) 
+                INSERT INTO users (id, name, email, password, google_id, created_at, educations, certifications, skills, placement_status) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             '''), (
                 user_id, name, email, '', sub, created_at,
@@ -1021,7 +1021,7 @@ def google_login():
             conn.commit()
             
             # Fetch back
-            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            cursor.execute(q("SELECT * FROM users WHERE id = ?"), (user_id,))
             user = cursor.fetchone()
         else:
             # Update google_id if missing
@@ -1118,7 +1118,6 @@ def update_user(id):
             query_parts.append("email = ?")
             params.append(email)
         if educations is not None:
-            # Encryption skipped for simpliciy during migration
             query_parts.append("educations = ?")
             params.append(json.dumps(educations))
         if certifications is not None:
