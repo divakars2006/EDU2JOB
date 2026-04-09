@@ -38,8 +38,11 @@ DATABASE_URL = os.getenv('DATABASE_URL') # For production PostgreSQL
 
 def get_db_connection():
     if DATABASE_URL:
-        # PostgreSQL
-        conn = psycopg2.connect(DATABASE_URL)
+        # PostgreSQL (Render fix for postgres:// vs postgresql://)
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(url)
         return conn
     else:
         # SQLite local
@@ -121,10 +124,10 @@ def process_user_for_response(user):
         del user_dict['password']
     
     # Parse JSON fields
-    # SQLite stores them as TEXT, so we need to json.loads them if they are strings
-    json_fields = ['educations', 'certifications', 'skills', 'placementStatus']
+    json_fields = ['educations', 'certifications', 'skills', 'placement_status']
     for field in json_fields:
-        val = user_dict.get(field, [])
+        # Handle lowercase keys from Postgres
+        val = user_dict.get(field) or user_dict.get(field.replace('_', '')) or []
         if isinstance(val, str) and val:
             try:
                 user_dict[field] = json.loads(val)
@@ -187,12 +190,12 @@ def init_db():
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT,
-            googleId TEXT,
-            createdAt DATETIME,
+            google_id TEXT,
+            created_at TIMESTAMP,
             educations TEXT,
             certifications TEXT,
             skills TEXT,
-            placementStatus TEXT
+            placement_status TEXT
         )
     ''')
 
@@ -1021,9 +1024,9 @@ def google_login():
             cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
             user = cursor.fetchone()
         else:
-            # Update googleId if missing
-            if not user['googleId']:
-                cursor.execute(q("UPDATE users SET googleId = ? WHERE id = ?"), (sub, user['id']))
+            # Update google_id if missing
+            if not (user.get('google_id') or user.get('googleid')):
+                cursor.execute(q("UPDATE users SET google_id = ? WHERE id = ?"), (sub, user['id']))
                 conn.commit()
                 # Fetch updated
                 cursor.execute(q("SELECT * FROM users WHERE id = ?"), (user['id'],))
@@ -1125,7 +1128,7 @@ def update_user(id):
              query_parts.append("skills = ?")
              params.append(json.dumps(skills))
         if placement_status is not None:
-             query_parts.append("placementStatus = ?")
+             query_parts.append("placement_status = ?")
              params.append(json.dumps(placement_status))
         if new_password:
              hashed = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
