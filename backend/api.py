@@ -199,6 +199,22 @@ def init_db():
         )
     ''')
 
+    if not DATABASE_URL:
+        # Migrate legacy camelCase user columns (from app.py / MySQL schema) to snake_case
+        cursor.execute("PRAGMA table_info(users)")
+        u_columns = [info[1] for info in cursor.fetchall()]
+        for old_name, new_name in (
+            ('googleId', 'google_id'),
+            ('createdAt', 'created_at'),
+            ('placementStatus', 'placement_status'),
+        ):
+            if old_name in u_columns and new_name not in u_columns:
+                cursor.execute(f'ALTER TABLE users RENAME COLUMN {old_name} TO {new_name}')
+                u_columns.remove(old_name)
+                u_columns.append(new_name)
+        if 'google_id' not in u_columns:
+            cursor.execute('ALTER TABLE users ADD COLUMN google_id TEXT')
+
     # Admin Users Table
     # Admin Users Table
     cursor.execute(f'''
@@ -1024,12 +1040,13 @@ def google_login():
             cursor.execute(q("SELECT * FROM users WHERE id = ?"), (user_id,))
             user = cursor.fetchone()
         else:
-            # Update google_id if missing
-            if not (user.get('google_id') or user.get('googleid')):
-                cursor.execute(q("UPDATE users SET google_id = ? WHERE id = ?"), (sub, user['id']))
+            # Update google_id if missing (Row has no .get(); normalize like process_user_for_response)
+            user_dict = dict(user) if not isinstance(user, dict) else user
+            if not (user_dict.get('google_id') or user_dict.get('googleId')):
+                cursor.execute(q("UPDATE users SET google_id = ? WHERE id = ?"), (sub, user_dict['id']))
                 conn.commit()
                 # Fetch updated
-                cursor.execute(q("SELECT * FROM users WHERE id = ?"), (user['id'],))
+                cursor.execute(q("SELECT * FROM users WHERE id = ?"), (user_dict['id'],))
                 user = cursor.fetchone()
 
         conn.close()
